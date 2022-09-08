@@ -1,4 +1,4 @@
-using DependencyInjection;
+using DependencyInjectionContainer;
 using System.ComponentModel;
 using DIFixture.TestClasses;
 
