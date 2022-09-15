@@ -39,10 +39,10 @@ namespace DependencyInjectionContainer
         }
 
 
-        public object Resolve(Type typeToResolve)
+        private object Resolve(Type typeToResolve)
             //if TypeToResolve is abstract resolves the first object which implements TypeToResolve
         {
-            Service serviceToResolve = services.FirstOrDefault(service => isServiceOfGivenType(service, typeToResolve));
+            Service serviceToResolve = services.FirstOrDefault(service => IsServiceOfGivenType(service, typeToResolve));
 
             if (serviceToResolve == null)
             {
@@ -80,34 +80,51 @@ namespace DependencyInjectionContainer
             return (TResolveType)Resolve(typeof(TResolveType));
         }
 
-        public IEnumerable<object> ResolveMany(Type type)
+        public IEnumerable<TResolveType> ResolveMany<TResolveType>()
         {
-            List<object> resolvedServices = new List<object>();
+            List<TResolveType> resolvedServices = new List<TResolveType>();
 
-            var servicesToResolve = services.Where(service => isServiceOfGivenType(service,type)).ToArray();
-
-            foreach (var service in servicesToResolve)
-            {
-                resolvedServices.Add(Resolve(service.ImplementationType));//create resolve for a service?
-            }
+            var servicesToResolve = services.Where(service => IsServiceOfGivenType(service, typeof(TResolveType)))
+                                            .Select(service =>
+                                            {
+                                                resolvedServices.Add((TResolveType)Resolve(service.ImplementationType));
+                                                return service;
+                                            })
+                                            .ToArray();
 
             return resolvedServices;
         }
 
-        public IEnumerable<TResolveType> ResolveMany<TResolveType>()
-        {
-            return ResolveMany(typeof(TResolveType)).Select(service => (TResolveType)service);
-        }
-
         private void ThrowExceptionIfServiceWithTypeExists(Type implementationType)
         {
-            bool containsServiceWithType = services.Where(service => service.ImplementationType == implementationType).Any();
+            bool containsServiceWithType = services.Any(service => service.ImplementationType == implementationType);
             if (containsServiceWithType)
             {
                 throw new ArgumentException($"Service with type {implementationType.FullName} has been already registered");
             }
         }
-        private bool isServiceOfGivenType(Service service, Type type) => service.InterfaceType == type ||
+        private bool IsServiceOfGivenType(Service service, Type type) => service.InterfaceType == type ||
             service.ImplementationType == type;
+
+        internal sealed record Service
+        {
+            public Service(Type implementationType, ServiceLifetime lifetime, Type interfaceType = null)
+            {
+                InterfaceType = interfaceType;
+                ImplementationType = implementationType;
+                Lifetime = lifetime;
+            }
+
+            public Service(object implementation, ServiceLifetime lifetime)
+            {
+                Implementation = implementation;
+                Lifetime = lifetime;
+                ImplementationType = Implementation.GetType();
+            }
+            public Type InterfaceType { get; init; }
+            public Type ImplementationType { get; init; }
+            public object Implementation { get; set; }
+            public ServiceLifetime Lifetime { get; init; }
+        }
     }
 }
