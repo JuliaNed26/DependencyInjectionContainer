@@ -29,6 +29,18 @@ namespace DIFixture
         }
 
         [Test]
+        public void RegisterAndResolveAfterResolving_ShouldResolveTwoServices()
+        {
+            container.Register<IMessagePrinter, FileMessageWriter>(ServiceLifetime.Singleton);
+            container.Register(new string("message"), ServiceLifetime.Singleton);
+            var fileMesWriterResolveResult = container.Resolve<FileMessageWriter>();
+            container.Register<IMessagePrinter, ConsoleMessageWriter>(ServiceLifetime.Singleton);
+            var consoleMesWriterResolveResult = container.Resolve<ConsoleMessageWriter>();
+            Assert.That(fileMesWriterResolveResult, Is.Not.EqualTo(null));
+            Assert.That(consoleMesWriterResolveResult, Is.Not.EqualTo(null));
+        }
+
+        [Test]
         public void ResolveSingletone_ShouldReturnOneImplementation()
         {
             container.Register<IMessagePrinter,FileMessageWriter>(ServiceLifetime.Singleton);
