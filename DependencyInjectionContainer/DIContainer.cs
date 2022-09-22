@@ -1,9 +1,5 @@
-﻿using System;
-using System.Collections;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Collections;
+using System.Reflection;
 
 namespace DependencyInjectionContainer
 {
@@ -11,52 +7,45 @@ namespace DependencyInjectionContainer
     {
         private List<Service> services;
 
-        public DIContainer()
+        public DIContainer(Assembly currAssembly)
         {
             services = new List<Service>();
+            RegisterWithAttributes(currAssembly);
         }
 
         public void Register<TIType, TImplementation>(ServiceLifetime lifetime) where TImplementation : TIType
         {
-            ThrowExceptionIfServiceWithTypeExists(typeof(TImplementation));
+            ThrowIfTypeUnappropriate(typeof(TImplementation));
             services.Add(new Service(typeof(TImplementation), lifetime, typeof(TIType)));
         }
 
-        public void Register<TImplementation>(ServiceLifetime lifetime)
+        public void Register<TImplementation>(ServiceLifetime lifetime) where TImplementation : class?
         {
             if(typeof(TImplementation).IsAbstract)
             {
                 throw new ArgumentException("Can't register type without assigned implementation type");
             }
-            ThrowExceptionIfServiceWithTypeExists(typeof(TImplementation));
+            ThrowIfTypeUnappropriate(typeof(TImplementation));
             services.Add(new Service(typeof(TImplementation), lifetime));
         }
 
         public void Register(object implementation, ServiceLifetime lifetime)
         {
-            ThrowExceptionIfServiceWithTypeExists(implementation.GetType());
+            ThrowIfTypeUnappropriate(implementation.GetType());
             services.Add(new Service(implementation, lifetime));
         }
 
-        public TResolveType Resolve<TResolveType>()
+        public TResolveType Resolve<TResolveType>() where TResolveType : class?
         {
             return (TResolveType)Resolve(typeof(TResolveType));
         }
 
-        public IEnumerable<TResolveType> ResolveMany<TResolveType>()
+        public IEnumerable<TResolveType> ResolveMany<TResolveType>() where TResolveType : class?
         {
-            List<TResolveType> resolvedServices = new List<TResolveType>();
-
-            var servicesToResolve = services.Where(service => IsServiceOfGivenType(service, typeof(TResolveType)))
-                                            .Select(service =>
-                                            {
-                                                resolvedServices.Add((TResolveType)Resolve(service.ImplementationType));
-                                                return service;
-                                            })
-                                            .ToArray();
-
-            return resolvedServices;
+            return services.Where(service => IsServiceOfGivenType(service, typeof(TResolveType)))
+                                            .Select(service => (TResolveType)Resolve(service.ImplementationType)).ToArray();
         }
+
         private object Resolve(Type typeToResolve)
         //if TypeToResolve is abstract resolves the first object which implements TypeToResolve
         {
@@ -80,26 +69,39 @@ namespace DependencyInjectionContainer
             }
 
             return implementation;
-
+            //simplify
             object GetCreatedImplementationForService(Service service)
             {
-                var constructorInfo = service.ImplementationType.GetConstructors().First();
+                var parameters = service.ImplementationType.GetConstructors().First().
+                                 GetParameters().Select(parameter => Resolve(parameter.ParameterType)).ToArray();
 
-                var parameters = constructorInfo.GetParameters().Select(parameter => Resolve(parameter.ParameterType)).ToArray();
-
-                object implementation = Activator.CreateInstance(service.ImplementationType, parameters);
-
-                return implementation;
+                return Activator.CreateInstance(service.ImplementationType, parameters);
             }
         }
-        private void ThrowExceptionIfServiceWithTypeExists(Type implementationType)
+        private void RegisterWithAttributes(Assembly curAssembly)
         {
-            bool containsServiceWithType = services.Any(service => service.ImplementationType == implementationType);
+            foreach (var type in curAssembly.GetTypes().Where(t => t.GetCustomAttribute<RegisterAttribute>() != null))
+            {
+                var attribute = type.GetCustomAttribute<RegisterAttribute>();
+                ThrowIfTypeUnappropriate(attribute.ImplementType);
+                services.Add(new Service(attribute.ImplementType, attribute.Lifetime, attribute.InterfaceType));
+            }
+        }
+
+        private void ThrowIfTypeUnappropriate(Type type)
+        {
+            bool containsServiceWithType = services.Any(service => service.ImplementationType == type);
             if (containsServiceWithType)
             {
-                throw new ArgumentException($"Service with type {implementationType.FullName} has been already registered");
+                throw new ArgumentException($"Service with type {type.FullName} has been already registered");
+            }
+            int i = type.GetConstructors(BindingFlags.Public).Count();
+            if (type.GetConstructors().Count() != 1)
+            {
+                throw new ArgumentException();
             }
         }
+
         private bool IsServiceOfGivenType(Service service, Type type) => service.InterfaceType == type ||
             service.ImplementationType == type;
 

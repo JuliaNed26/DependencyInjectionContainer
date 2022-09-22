@@ -1,6 +1,7 @@
 using DependencyInjectionContainer;
 using System.ComponentModel;
 using DIFixture.TestClasses;
+using System.Reflection;
 
 namespace DIFixture
 {
@@ -11,7 +12,7 @@ namespace DIFixture
         [SetUp]
         public void Setup()
         {
-            container = new DIContainer();
+            container = new DIContainer(Assembly.GetExecutingAssembly());
         }
 
         [Test]
@@ -27,24 +28,24 @@ namespace DIFixture
         {
             Assert.Throws<ArgumentException>(() => container.Register<IMessagePrinter>(ServiceLifetime.Singleton));
         }
-
+        //refactoring
         [Test]
         public void RegisterAndResolveAfterResolving_ShouldResolveTwoServices()
         {
             container.Register<IMessagePrinter, FileMessageWriter>(ServiceLifetime.Singleton);
-            container.Register(new string("message"), ServiceLifetime.Singleton);
+            container.Register("message", ServiceLifetime.Singleton);
             var fileMesWriterResolveResult = container.Resolve<FileMessageWriter>();
             container.Register<IMessagePrinter, ConsoleMessageWriter>(ServiceLifetime.Singleton);
             var consoleMesWriterResolveResult = container.Resolve<ConsoleMessageWriter>();
-            Assert.That(fileMesWriterResolveResult, Is.Not.EqualTo(null));
-            Assert.That(consoleMesWriterResolveResult, Is.Not.EqualTo(null));
+            Assert.That(fileMesWriterResolveResult.GetType, Is.EqualTo(typeof(FileMessageWriter)));
+            Assert.That(consoleMesWriterResolveResult.GetType, Is.EqualTo(typeof(ConsoleMessageWriter)));
         }
 
         [Test]
         public void ResolveSingletone_ShouldReturnOneImplementation()
         {
             container.Register<IMessagePrinter,FileMessageWriter>(ServiceLifetime.Singleton);
-            container.Register(new string("message"), ServiceLifetime.Singleton);
+            container.Register("message", ServiceLifetime.Singleton);
             var firstResolveResult = container.Resolve<FileMessageWriter>();
             var secondResolveResult = container.Resolve<FileMessageWriter>();
             Assert.That(firstResolveResult, Is.EqualTo(secondResolveResult));
@@ -54,7 +55,7 @@ namespace DIFixture
         public void ResolveTransient_ShouldReturnDifferentImplementations()
         {
             container.Register<IMessagePrinter, FileMessageWriter>(ServiceLifetime.Transient);
-            container.Register(new string("message"), ServiceLifetime.Singleton);
+            container.Register("message", ServiceLifetime.Singleton);
             var firstResolveResult = container.Resolve<FileMessageWriter>();
             var secondResolveResult = container.Resolve<FileMessageWriter>();
             Assert.That(firstResolveResult, Is.Not.EqualTo(secondResolveResult));
@@ -63,7 +64,7 @@ namespace DIFixture
         [Test]
         public void ResolveServiceByInterface_RegisteredTwoServicesWithThisInterface_ShouldGetTheFirst()
         {
-            container.Register(new string("message"), ServiceLifetime.Singleton);
+            container.Register("message", ServiceLifetime.Singleton);
             container.Register<IMessagePrinter, FileMessageWriter>(ServiceLifetime.Singleton);
             container.Register<IMessagePrinter, ConsoleMessageWriter>(ServiceLifetime.Singleton);
             Type type = container.Resolve<IMessagePrinter>().GetType();
@@ -84,7 +85,7 @@ namespace DIFixture
         [Test]
         public void ResolveMany_ShouldAllBeResolved()
         {
-            container.Register(new string("message"), ServiceLifetime.Singleton);
+            container.Register("message", ServiceLifetime.Singleton);
             container.Register<IMessagePrinter, FileMessageWriter>(ServiceLifetime.Singleton);
             container.Register<IMessagePrinter, ConsoleMessageWriter>(ServiceLifetime.Singleton);
             var resolvedObjects = container.ResolveMany<IMessagePrinter>();
@@ -103,17 +104,18 @@ namespace DIFixture
         }
 
         [Test]
-        public void RegisterWithoutImplementationType_ShouldThrowArgumentException()
-        {
-            Assert.Throws<ArgumentException>(() => container.Register<IMessagePrinter>(ServiceLifetime.Singleton));
-        }
-
-        [Test]
         public void ResolveManyForNotAbstractType_ShouldResolveOneObject()
         {
             container.Register<AndreyDeveloper>(ServiceLifetime.Singleton);
             var resolvedObjects = container.ResolveMany<AndreyDeveloper>();
             Assert.That(resolvedObjects.Count(), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void RegisterTypeWithAttribute_ShouldBeRegisteredAuthomatically()
+        {
+            var resolvedService = container.Resolve<TypeWithAttribute>();
+            Assert.That(resolvedService.GetType(), Is.EqualTo(typeof(TypeWithAttribute)));
         }
     }
 }
