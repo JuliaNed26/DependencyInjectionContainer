@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace DIFixture.TestClasses
 {
-    public class Notifier
+    public class Notifier : INotifier
     {
         IProblem problem;
         IMessagePrinter printer;

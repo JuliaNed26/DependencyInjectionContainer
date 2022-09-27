@@ -7,12 +7,12 @@ using System.Threading.Tasks;
 
 namespace DIFixture.TestClasses
 {
-    [Register(typeof(TypeWithAttribute),ServiceLifetime.Singleton)]
-    public class TypeWithAttribute
+    [Register(ServiceLifetime.Singleton,typeof(ITypeWithAttribute))]
+    public class TypeWithAttribute : ITypeWithAttribute
     {
-        int k;
-        public TypeWithAttribute() 
+        public void SomeMethod()
         {
+            Console.WriteLine("Some method");
         }
     }
 }

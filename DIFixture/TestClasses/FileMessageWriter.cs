@@ -8,11 +8,7 @@ namespace DIFixture.TestClasses
 {
     public class FileMessageWriter : IMessagePrinter
     {
-        string filePath;
-        public FileMessageWriter(string path)
-        {
-            filePath = path;
-        }
+        string filePath = "C:\\Users\\nedav\\Desktop\\in.txt";
 
         public void Print(string message)
         {
