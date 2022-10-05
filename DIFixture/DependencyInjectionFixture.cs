@@ -2,43 +2,45 @@ using DependencyInjectionContainer;
 using System.ComponentModel;
 using DIFixture.TestClasses;
 using System.Reflection;
+using System.ComponentModel.Composition;
 
 namespace DIFixture
 {
     public class DependencyInjectionFixture
     {
-        DIContainer container;
+        DIContainerBuilder builder;
 
         [SetUp]
         public void Setup()
         {
-            container = new DIContainer();
+            builder = new DIContainerBuilder();
         }
 
         [Test]
         public void RegisterTwoServicesWithEqualImplementationType_ThrowsArgumentException()
         {
-            container.Register<FileMessageWriter>(ServiceLifetime.Singleton);
-            Assert.Throws<ArgumentException>(() => container.Register<FileMessageWriter>(ServiceLifetime.Transient));
-            Assert.Throws<ArgumentException>(() => container.Register<FileMessageWriter>(ServiceLifetime.Singleton));
+            builder.Register<FileMessageWriter>(ServiceLifetime.Singleton);
+            Assert.Throws<ArgumentException>(() => builder.Register<FileMessageWriter>(ServiceLifetime.Transient));
+            Assert.Throws<ArgumentException>(() => builder.Register<FileMessageWriter>(ServiceLifetime.Singleton));
         }
 
         [Test]
         public void RegisterTypeOnlyByInterface_ThrowsArgumentException()
         {
-            Assert.Throws<ArgumentException>(() => container.Register<IMessagePrinter>(ServiceLifetime.Singleton));
+            Assert.Throws<ArgumentException>(() => builder.Register<IMessagePrinter>(ServiceLifetime.Singleton));
         }
 
         [Test]
         public void RegisterTypeWithMoreThanOneConstructor_ShouldThrowException()
         {
-            Assert.Throws<ArgumentException>(() => container.Register<TypeWithManyConstructors>(ServiceLifetime.Singleton));
+            Assert.Throws<ArgumentException>(() => builder.Register<TypeWithManyCtorsWithoutAttributes>(ServiceLifetime.Singleton));
         }
 
         [Test]
         public void ResolveSingletone_ShouldReturnOneImplementation()
         {
-            container.Register<IMessagePrinter, FileMessageWriter>(ServiceLifetime.Singleton);
+            builder.Register<IMessagePrinter, FileMessageWriter>(ServiceLifetime.Singleton);
+            var container = builder.Build();
             var firstResolveResult = container.Resolve<IMessagePrinter>();
             var secondResolveResult = container.Resolve<IMessagePrinter>();
             Assert.That(firstResolveResult, Is.EqualTo(secondResolveResult));
@@ -47,7 +49,8 @@ namespace DIFixture
         [Test]
         public void ResolveTransient_ShouldReturnDifferentImplementations()
         {
-            container.Register<IMessagePrinter, FileMessageWriter>(ServiceLifetime.Transient);
+            builder.Register<IMessagePrinter, FileMessageWriter>(ServiceLifetime.Transient);
+            var container = builder.Build();
             var firstResolveResult = container.Resolve<IMessagePrinter>();
             var secondResolveResult = container.Resolve<IMessagePrinter>();
             Assert.That(firstResolveResult, Is.Not.EqualTo(secondResolveResult));
@@ -56,10 +59,11 @@ namespace DIFixture
         [Test]
         public void ResolveComplexGraph()
         {
-            container.Register<IProblem, ProgrammersProblem>(ServiceLifetime.Singleton);
-            container.Register<IProgrammer, AndreyDeveloper>(ServiceLifetime.Singleton);
-            container.Register<IMessagePrinter, ConsoleMessageWriter>(ServiceLifetime.Singleton);
-            container.Register<INotifier, Notifier>(ServiceLifetime.Singleton);
+            builder.Register<IProblem, ProgrammersProblem>(ServiceLifetime.Singleton);
+            builder.Register<IProgrammer, AndreyDeveloper>(ServiceLifetime.Singleton);
+            builder.Register<IMessagePrinter, ConsoleMessageWriter>(ServiceLifetime.Singleton);
+            builder.Register<INotifier, NotifierWithLocalPrinter>(ServiceLifetime.Singleton);
+            var container = builder.Build();
             var notifier = container.Resolve<INotifier>();
             Assert.That(notifier.GetNotifyMessage(), Is.EqualTo("Andrey, ti ochen stupid, forgot to place }."));
         }
@@ -67,8 +71,9 @@ namespace DIFixture
         [Test]
         public void ResolveMany_ShouldAllBeResolved()
         {
-            container.Register<IMessagePrinter, FileMessageWriter>(ServiceLifetime.Singleton);
-            container.Register<IMessagePrinter, ConsoleMessageWriter>(ServiceLifetime.Singleton);
+            builder.Register<IMessagePrinter, FileMessageWriter>(ServiceLifetime.Singleton);
+            builder.Register<IMessagePrinter, ConsoleMessageWriter>(ServiceLifetime.Singleton);
+            var container = builder.Build();
             var resolvedObjects = container.ResolveMany<IMessagePrinter>();
             Assert.That(resolvedObjects.Where(item => item.GetType() == typeof(FileMessageWriter)
                         || item.GetType() == typeof(ConsoleMessageWriter)).Count, Is.EqualTo(2));
@@ -78,15 +83,17 @@ namespace DIFixture
         [Test]
         public void ResolveServiceByInterface_MoreThanOneImplementationTypeRegistered_ShouldThrowException()
         {
-            container.Register<IMessagePrinter, FileMessageWriter>(ServiceLifetime.Singleton);
-            container.Register<IMessagePrinter, ConsoleMessageWriter>(ServiceLifetime.Singleton);
+            builder.Register<IMessagePrinter, FileMessageWriter>(ServiceLifetime.Singleton);
+            builder.Register<IMessagePrinter, ConsoleMessageWriter>(ServiceLifetime.Singleton);
+            var container = builder.Build();
             Assert.Throws<ArgumentException>(() => container.Resolve<IMessagePrinter>());
         }
 
         [Test]
         public void ResolveServiceWithNotAllInjectionsRegistered_ThrowNullReferenceException()
         {
-            container.Register<IProblem, ProgrammersProblem>(ServiceLifetime.Singleton);
+            builder.Register<IProblem, ProgrammersProblem>(ServiceLifetime.Singleton);
+            var container = builder.Build();
             Assert.Throws<NullReferenceException>(() => container.Resolve<IProblem>());
             //should IProgrammer interface implementation be registered
         }
@@ -94,7 +101,8 @@ namespace DIFixture
         [Test]
         public void ResolveManyForNotAbstractType_ShouldResolveOneObject()
         {
-            container.Register<AndreyDeveloper>(ServiceLifetime.Singleton);
+            builder.Register<AndreyDeveloper>(ServiceLifetime.Singleton);
+            var container = builder.Build();
             var resolvedObjects = container.ResolveMany<AndreyDeveloper>();
             Assert.That(resolvedObjects.Count(), Is.EqualTo(1));
         }
@@ -102,46 +110,122 @@ namespace DIFixture
         [Test]
         public void RegisterTypeWithAttribute_ShouldBeRegisteredAuthomatically()
         {
-            container.RegisterAssemblyByAttributes(Assembly.GetExecutingAssembly());
+            builder.RegisterAssemblyByAttributes(Assembly.GetExecutingAssembly());
+            var container = builder.Build();
             var resolvedService = container.Resolve<ITypeWithAttribute>();
-            Assert.That(resolvedService.GetType(), Is.EqualTo(typeof(TypeWithAttribute)));
+            Assert.That(resolvedService.GetType(), Is.EqualTo(typeof(TypeWithRegisterAttribute)));
         }
 
         [Test]
-        public void RegistrationAfterResolving_ThrowsAnException()
+        public void ResolveTypeWhichRegisteredInChildAndInParentContainerLocal_GetResolvedFromAChild()
         {
-            container.Register<IMessagePrinter, FileMessageWriter>(ServiceLifetime.Singleton);
-            container.Resolve<IMessagePrinter>();
-            Assert.Throws<ArgumentException>(() => container.Register<IMessagePrinter, ConsoleMessageWriter>(ServiceLifetime.Singleton));
+            builder.Register<IMessagePrinter, FileMessageWriter>(ServiceLifetime.Singleton);
+            var parentContainer = builder.Build();
+            var childContainerBuilder = parentContainer.CreateAChildContainer();
+            childContainerBuilder.Register<IMessagePrinter, ConsoleMessageWriter>(ServiceLifetime.Singleton);
+            var childContainer = childContainerBuilder.Build();
+            Assert.That(childContainer.Resolve<IMessagePrinter>(ImportSource.Local).GetType(), Is.EqualTo(typeof(ConsoleMessageWriter)));
         }
 
         [Test]
-        public void ResolveTypeWhichRegisteredInChildAndInParentContainer_FromChild_GetResolvedFromAChild()
+        public void ResolveTypeWhichRegisteredInChildAndInParentContainerNonLocal_GetResolvedFromAParent()
         {
-            container.Register<IMessagePrinter, FileMessageWriter>(ServiceLifetime.Singleton);
-            var childContainer = container.CreateAChildContainer();
-            childContainer.Register<IMessagePrinter, ConsoleMessageWriter>(ServiceLifetime.Singleton);
-            Assert.That(childContainer.Resolve<IMessagePrinter>().GetType(), Is.EqualTo(typeof(ConsoleMessageWriter)));
+            builder.Register<IMessagePrinter, FileMessageWriter>(ServiceLifetime.Singleton);
+            var parentContainer = builder.Build();
+            var childContainerBuilder = parentContainer.CreateAChildContainer();
+            childContainerBuilder.Register<IMessagePrinter, ConsoleMessageWriter>(ServiceLifetime.Singleton);
+            var childContainer = childContainerBuilder.Build();
+            Assert.That(childContainer.Resolve<IMessagePrinter>(ImportSource.NonLocal).GetType(), Is.EqualTo(typeof(FileMessageWriter)));
+        }
+
+        [Test]
+        public void ResolveTypeWhichRegisteredInChildAndInParentContainerAny_GetResolvedFromAChild()
+        {
+            builder.Register<IMessagePrinter, FileMessageWriter>(ServiceLifetime.Singleton);
+            var parentContainer = builder.Build();
+            var childContainerBuilder = parentContainer.CreateAChildContainer();
+            childContainerBuilder.Register<IMessagePrinter, ConsoleMessageWriter>(ServiceLifetime.Singleton);
+            var childContainer = childContainerBuilder.Build();
+            Assert.That(childContainer.Resolve<IMessagePrinter>(ImportSource.Any).GetType(), Is.EqualTo(typeof(ConsoleMessageWriter)));
+        }
+        [Test]
+        public void ResolveTypeInContainerWithoutParentNonLocal_ShouldThrowException()
+        {
+            builder.Register<IMessagePrinter, FileMessageWriter>(ServiceLifetime.Singleton);
+            var container = builder.Build();
+            Assert.Throws<ArgumentException>(() => container.Resolve<IMessagePrinter>(ImportSource.NonLocal).GetType());
         }
 
         [Test]
         public void ResolveTypeWhichRegisteredInParentButNotInChildContainer_FromChild_GetResolvedFromParent()
         {
-            container.Register<IProgrammer, AndreyDeveloper>(ServiceLifetime.Transient);
-            var childContainer = container.CreateAChildContainer();
-            childContainer.Register<IProblem, ProgrammersProblem>(ServiceLifetime.Singleton);
+            builder.Register<IProgrammer, AndreyDeveloper>(ServiceLifetime.Transient); 
+            var parentContainer = builder.Build();
+            var childContainerBuilder = parentContainer.CreateAChildContainer();
+            childContainerBuilder.Register<IProblem, ProgrammersProblem>(ServiceLifetime.Singleton);
+            var childContainer = childContainerBuilder.Build();
             var progProblem = childContainer.Resolve<IProblem>();
             Assert.That(progProblem.GetProblemInfo, Is.EqualTo("Andrey, ti ochen stupid, forgot to place }."));
         }
 
         [Test]
-        public void ResolveManyWithParentContainer_ShouldReturnFromAChildAndParent()
+        public void ResolveManyImportSourceTypeAny_ShouldReturnFromAChildAndParent()
         {
-            container.Register<IMessagePrinter, FileMessageWriter>(ServiceLifetime.Singleton);
-            var childContainer = container.CreateAChildContainer();
-            childContainer.Register<IMessagePrinter, ConsoleMessageWriter>(ServiceLifetime.Singleton);
-            Assert.That(childContainer.ResolveMany<IMessagePrinter>(true).Count(), Is.EqualTo(2));
+            builder.Register<IMessagePrinter, FileMessageWriter>(ServiceLifetime.Singleton); 
+            var parentContainer = builder.Build();
+            var childContainerBuilder = parentContainer.CreateAChildContainer();
+            childContainerBuilder.Register<IMessagePrinter, ConsoleMessageWriter>(ServiceLifetime.Singleton);
+            var childContainer = childContainerBuilder.Build();
+            Assert.That(childContainer.ResolveMany<IMessagePrinter>(ImportSource.Any).Count(), Is.EqualTo(2));
         }
 
+        [Test]
+        public void ResolveManyImportSourceTypeLocal_ShouldReturnFromAChildOnly()
+        {
+            builder.Register<IMessagePrinter, FileMessageWriter>(ServiceLifetime.Singleton);
+            var parentContainer = builder.Build();
+            var childContainerBuilder = parentContainer.CreateAChildContainer();
+            childContainerBuilder.Register<IMessagePrinter, ConsoleMessageWriter>(ServiceLifetime.Singleton);
+            var childContainer = childContainerBuilder.Build();
+            var resolved = childContainer.ResolveMany<IMessagePrinter>(ImportSource.Local);
+            Assert.That(resolved.Count(), Is.EqualTo(1));
+            Assert.That(resolved.ElementAt(0).GetType(), Is.EqualTo(typeof(ConsoleMessageWriter)));
+        }
+
+        [Test]
+        public void ResolveManyImportSourceTypeNonLocal_ShouldReturnFromAChildOnly()
+        {
+            builder.Register<IMessagePrinter, FileMessageWriter>(ServiceLifetime.Singleton);
+            var parentContainer = builder.Build();
+            var childContainerBuilder = parentContainer.CreateAChildContainer();
+            childContainerBuilder.Register<IMessagePrinter, ConsoleMessageWriter>(ServiceLifetime.Singleton);
+            var childContainer = childContainerBuilder.Build();
+            var resolved = childContainer.ResolveMany<IMessagePrinter>(ImportSource.NonLocal);
+            Assert.That(resolved.Count(), Is.EqualTo(1));
+            Assert.That(resolved.ElementAt(0).GetType(), Is.EqualTo(typeof(FileMessageWriter)));
+        }
+
+        [Test]
+        public void ResolveWithImportManyAttribute_ImportSourceNotLocal_GetNotLocal()
+        {
+            builder.Register<IProblem, ProgrammersProblem>(ServiceLifetime.Singleton);
+            builder.Register<IProgrammer, AndreyDeveloper>(ServiceLifetime.Singleton);
+            builder.Register<IMessagePrinter, ConsoleMessageWriter>(ServiceLifetime.Singleton);
+            var parentContainer = builder.Build();
+            var childBuilder = parentContainer.CreateAChildContainer();
+            childBuilder.Register<INotifier, NotifierWithNonLocalPrinter>(ServiceLifetime.Singleton);
+            var childContainer = childBuilder.Build();
+            var notifier = childContainer.Resolve<INotifier>();
+            Assert.That((notifier as NotifierWithNonLocalPrinter).Printer is ConsoleMessageWriter);
+        }
+
+        [Test]
+        public void ResolveWithImportCtor_ShouldUseImportCtor()
+        {
+            builder.Register<TypeWithManyCtorsOneImportCtor>(ServiceLifetime.Singleton);
+            var container = builder.Build();
+            var resolved = container.Resolve<TypeWithManyCtorsOneImportCtor>();
+            Assert.That(resolved.CtorMessage, Is.EqualTo("import constructor"));
+        }
     }
 }

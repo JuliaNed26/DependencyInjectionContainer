@@ -1,19 +1,20 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.Composition;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
 namespace DIFixture.TestClasses
 {
-    public class Notifier : INotifier
+    internal class NotifierWithLocalPrinter:INotifier
     {
         IProblem problem;
-        IMessagePrinter printer;
-        public Notifier(IProblem _problem, IMessagePrinter _printer)
+        internal IMessagePrinter Printer { get; init; }
+        public NotifierWithLocalPrinter(IProblem _problem, [ImportMany(Source = ImportSource.Local)] IMessagePrinter _printer)
         {
             problem = _problem;
-            printer = _printer;
+            Printer = _printer;
         }
 
         public string GetNotifyMessage()
@@ -23,7 +24,7 @@ namespace DIFixture.TestClasses
 
         public void Notify()
         {
-            printer.Print(problem.GetProblemInfo());
+            Printer.Print(problem.GetProblemInfo());
         }
     }
 }
