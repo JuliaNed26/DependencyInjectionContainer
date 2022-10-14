@@ -1,30 +1,34 @@
 ﻿using System.Collections;
 using System.ComponentModel.Composition;
 using System.Reflection;
+using DependencyInjectionContainer.Attributes;
 
 namespace DependencyInjectionContainer
 {
-    public class DIContainerBuilder
+    public sealed class DIContainerBuilder
     {
         private List<Service> services;
         private DIContainer parent;
+        private bool isBuild;
 
         public DIContainerBuilder()
         {
             services = new List<Service>();
             parent = null;
+            isBuild = false;
         }
 
         internal DIContainerBuilder(DIContainer _parent)
         {
             services = new List<Service>();
             parent = _parent;
+            isBuild = false;
         }
 
-        public void Register<TIType, TImplementation>(ServiceLifetime lifetime) where TImplementation : TIType
+        public void Register<TImplementationInterface, TImplementation>(ServiceLifetime lifetime) where TImplementation : TImplementationInterface
         {
             ThrowIfTypeUnappropriate(typeof(TImplementation));
-            services.Add(new Service(typeof(TImplementation), lifetime, typeof(TIType)));
+            services.Add(new Service(typeof(TImplementation), lifetime, typeof(TImplementationInterface)));
         }
 
         public void Register<TImplementation>(ServiceLifetime lifetime) where TImplementation : class?
@@ -55,16 +59,21 @@ namespace DependencyInjectionContainer
 
         public DIContainer Build()
         {
+            isBuild = true;
             return new DIContainer(services, parent);
         }
 
         private void ThrowIfTypeUnappropriate(Type type)
         {
-            var ctorsWithImportAttribute = type.GetConstructors()
-                    .Where(constructor => constructor.GetCustomAttribute<ImportingConstructorAttribute>() != null);
-
-            if (type.GetConstructors().Count() > 1 && 
-                ( ctorsWithImportAttribute.Count() > 1 || ctorsWithImportAttribute.Count() == 0))
+            if(parent != null && parent.Services.Where(service => service.ImplementationType == type).Any())
+            {
+                throw new ArgumentException($"Service with type {type.FullName} has been already registered");
+            }
+            if(isBuild)
+            {
+                throw new ArgumentException("This container was built already");
+            }
+            if (type.GetConstructors().Count() > 1)
             {
                 throw new ArgumentException("Can't register type with more than one constructor");
             }

@@ -4,10 +4,12 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace DIFixture.TestClasses
+namespace DependencyInjectionContainer
 {
-    public interface IProgrammer
+    public enum ResolveSource
     {
-        string GetName();
+        Local,
+        NonLocal,
+        Any
     }
 }

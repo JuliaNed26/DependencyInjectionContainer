@@ -4,14 +4,14 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace DependencyInjectionContainer
+namespace DependencyInjectionContainer.Attributes
 {
     [AttributeUsage(AttributeTargets.Class, Inherited = false)]
     public sealed class RegisterAttribute : Attribute
     {
         public Type InterfaceType { get; private set; }
         public ServiceLifetime Lifetime { get; private set; }
-        public RegisterAttribute(ServiceLifetime lifetime, Type interfaceType = null)
+        public RegisterAttribute(ServiceLifetime lifetime, Type interfaceType)
         {
             InterfaceType = interfaceType;
             Lifetime = lifetime;

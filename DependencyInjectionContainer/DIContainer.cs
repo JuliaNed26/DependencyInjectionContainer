@@ -3,73 +3,90 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
-using System.ComponentModel.Composition;
 using System.Reflection;
+using DependencyInjectionContainer.Attributes;
+using System.Collections;
+using System.Data;
+using System.Reflection.Metadata;
 
 namespace DependencyInjectionContainer
 {
-    public sealed class DIContainer
+    public sealed record DIContainer
     {
-        private List<Service> _services;
-        private DIContainer _curContainerParent;
+        private DIContainer curContainerParent;
 
-        internal DIContainer(List<Service> services, DIContainer containerParent)
+        internal DIContainer(List<Service> _services, DIContainer containerParent)
         {
-            _services = services;
-            _curContainerParent = containerParent;
+            Services = _services;
+            curContainerParent = containerParent;
         }
+        internal List<Service> Services { get; private set; }
 
         public DIContainerBuilder CreateAChildContainer()
         {
             return new DIContainerBuilder(this);
         }
 
-        public TResolveType Resolve<TResolveType>(ImportSource importSource = ImportSource.Any) where TResolveType : class?
+        public TypeToResolve Resolve<TypeToResolve>(ResolveSource resolveType = ResolveSource.Any) where TypeToResolve : class?
         {
-            return (TResolveType)Resolve(typeof(TResolveType), importSource);
+            return (TypeToResolve)Resolve(typeof(TypeToResolve), resolveType);
         }
 
-        public IEnumerable<TResolveType> ResolveMany<TResolveType>(ImportSource importSource = ImportSource.Any) where TResolveType : class?
+        public IEnumerable<TypeToResolve> ResolveMany<TypeToResolve>(ResolveSource resolveSource = ResolveSource.Any) where TypeToResolve : class?
         {
-            List<TResolveType> resolvedServices = new List<TResolveType>();
-            var resolveLocal = (ImportSource _impSrcType) =>
-                    resolvedServices.AddRange(_services.Where(service => IsServiceOfGivenType(service, typeof(TResolveType)))
-                                            .Select(service => (TResolveType)Resolve(service.ImplementationType, _impSrcType)).ToList());
-            var resolveNonLocal = (ImportSource _impSrcType) => 
-            {if (_curContainerParent != null) { resolvedServices.AddRange(_curContainerParent.ResolveMany<TResolveType>(_impSrcType)); }};
+            return ResolveMany(typeof(TypeToResolve), resolveSource).Select(obj => (TypeToResolve)obj);
+        }
 
-            switch (importSource)
+        private IEnumerable<object> ResolveMany(Type typeToResolve, ResolveSource resolveSource = ResolveSource.Any)
+        {
+
+            List<object> resolvedServices = new List<object>();
+
+            var resolveLocal = (ResolveSource resSource) =>
+                    resolvedServices.AddRange(Services.Where(service => IsServiceOfGivenType(service, typeToResolve))
+                                            .Select(service => Resolve(service.ImplementationType, resSource)).ToList());
+
+            var resolveNonLocal = (ResolveSource resSource) =>
+            { if (curContainerParent != null) { resolvedServices.AddRange(curContainerParent.ResolveMany(typeToResolve, resSource)); } };
+
+            switch (resolveSource)
             {
-                case ImportSource.Any:
-                    resolveLocal(importSource);
-                    resolveNonLocal(importSource);
+                case ResolveSource.Any:
+                    resolveLocal(resolveSource);
+                    resolveNonLocal(resolveSource);
                     break;
-                case ImportSource.Local:
-                    resolveLocal(importSource);
+                case ResolveSource.Local:
+                    resolveLocal(resolveSource);
                     break;
-                case ImportSource.NonLocal:
-                    if (_curContainerParent == null)
+                case ResolveSource.NonLocal:
+                    if (curContainerParent == null)
                         throw new ArgumentException("This container does not have a parent");
-                    resolveNonLocal(ImportSource.Any);
+                    resolveNonLocal(ResolveSource.Any);
                     break;
                 default:
+                    throw new ArgumentException("Wrong resolve source");
                     break;
             }
 
             return resolvedServices;
         }
 
-        private object Resolve(Type typeToResolve, ImportSource importSource)
+        private object Resolve(Type typeToResolve, ResolveSource resolveType)
         {
-            if(importSource == ImportSource.NonLocal)
+            if(typeToResolve.IsGenericType && typeToResolve.GetGenericTypeDefinition() == typeof(IEnumerable<>))
             {
-                if(_curContainerParent == null)
-                    throw new ArgumentException("This container does not have a parent");
-
-                return _curContainerParent.Resolve(typeToResolve, ImportSource.Any);
+                return ResolveMany(typeToResolve.GetGenericArguments()[0], resolveType);
             }
 
-            var servicesToResolve = _services.Where(service => IsServiceOfGivenType(service, typeToResolve));
+            if(resolveType == ResolveSource.NonLocal)
+            {
+                if(curContainerParent == null)
+                    throw new ArgumentException("This container does not have a parent");
+
+                return curContainerParent.Resolve(typeToResolve, ResolveSource.Any);
+            } 
+
+            var servicesToResolve = Services.Where(service => IsServiceOfGivenType(service, typeToResolve));
 
             if (servicesToResolve.Count() > 1)
             {
@@ -78,13 +95,13 @@ namespace DependencyInjectionContainer
 
             if (servicesToResolve.Count() == 0)
             {
-                if (_curContainerParent != null && importSource == ImportSource.Any)
+                if (curContainerParent != null && resolveType == ResolveSource.Any)
                 {
-                    return _curContainerParent.Resolve(typeToResolve,importSource);
+                    return curContainerParent.Resolve(typeToResolve, resolveType);
                 }
                 else
                 {
-                    throw new NullReferenceException($"Do not have registrated services of type {typeToResolve.FullName}");
+                    throw new KeyNotFoundException($"Do not have registrated services of type {typeToResolve.FullName}");
                 }
             }
 
@@ -106,29 +123,22 @@ namespace DependencyInjectionContainer
 
             object GetCreatedImplementationForService(Service service)
             {
-                IEnumerable<ConstructorInfo> constructors;
-                constructors = service.ImplementationType.GetConstructors()
-                    .Where(constructor => constructor.GetCustomAttribute<ImportingConstructorAttribute>() != null);
+                var IsEnumerable = (Type type) => type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IEnumerable<>);
 
-                if (constructors.Count() == 0)
-                {
-                    constructors = service.ImplementationType.GetConstructors();
-                }
-
-                var parameters = constructors.First().
+                var parameters = service.ImplementationType.GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).First()?.
                                  GetParameters()
-                                 .Select(parameter => Resolve(parameter.ParameterType,GetParamAttributeImportSource(parameter))).ToArray();
+                                 .Select(parameter => 
+                                 { 
+                                     if (!IsEnumerable(parameter.ParameterType)) 
+                                     {
+                                         return Resolve(parameter.ParameterType, resolveType);
+                                     }
+                                     return ResolveMany(parameter.ParameterType.GetGenericArguments()[0], resolveType);
+                                 }).ToArray();
 
                 return Activator.CreateInstance(service.ImplementationType, parameters);
-
-                ImportSource GetParamAttributeImportSource(ParameterInfo parameter)
-                {
-                    var impManyAttribute = parameter.GetCustomAttribute<ImportManyAttribute>();
-                    return impManyAttribute != null ? impManyAttribute.Source : ImportSource.Any;
-                }
             }
         }
-
 
         private bool IsServiceOfGivenType(Service service, Type type) => service.InterfaceType == type ||
             service.ImplementationType == type;
