@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Reflection;
 using System.ComponentModel.Composition;
 using DIFixture.Test_classes;
+using DependencyInjectionContainer.Exceptions;
 
 namespace DIFixture
 {
@@ -80,7 +81,7 @@ namespace DIFixture
             var container = builder.Build();
             Assert.That(container.Resolve<IErrorLogger>().GetType(), Is.EqualTo(typeof(ConsoleLogger)));
             Assert.That(container.Resolve<IUserDirectory>().GetType(), Is.EqualTo(typeof(PublicDirectory)));
-            Assert.Throws<KeyNotFoundException>(() => container.Resolve<IUserFile>());
+            Assert.Throws<ServiceNotFoundException>(() => container.Resolve<IUserFile>());
         }
 
         //register singletone
@@ -139,11 +140,10 @@ namespace DIFixture
         [Test]
         public void ResolveWhenNotAllTypesRegistered_ShouldThrowArgumentException()
         {
-            builder.RegisterAssemblyByAttributes(typeof(FileSystem).Assembly);
             builder.Register<IUserDirectory, HiddenDirectory>(ServiceLifetime.Transient);
             builder.Register<FileSystem>(ServiceLifetime.Singleton);
             var container = builder.Build();
-            Assert.Throws<ArgumentException>(() => container.Resolve<FileSystem>());
+            Assert.Throws<ServiceNotFoundException>(() => container.Resolve<FileSystem>());
         }
 
         [Test]
@@ -156,6 +156,15 @@ namespace DIFixture
             Assert.That(resolved.Count(), Is.EqualTo(2));
             Assert.That(resolved.Where(logger => logger.GetType() == typeof(ConsoleLogger)).Count(), Is.EqualTo(1));
             Assert.That(resolved.Where(logger => logger.GetType() == typeof(FileLogger)).Count(), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void ResolveNotRegisteredList_ShouldThrowAnException()
+        {
+            builder.Register<IErrorLogger, ConsoleLogger>(ServiceLifetime.Singleton);
+            builder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
+            var container = builder.Build();
+            Assert.Throws<ServiceNotFoundException>(() => container.Resolve<List<IErrorLogger>>());
         }
 
         [Test]
@@ -174,7 +183,7 @@ namespace DIFixture
         {
             builder.Register<FileLogger>(ServiceLifetime.Singleton);
             var container = builder.Build();
-            Assert.Throws<KeyNotFoundException>(() => container.Resolve<IErrorLogger>());
+            Assert.Throws<ServiceNotFoundException>(() => container.Resolve<IErrorLogger>());
         }
 
         //resolve when two services registered by this interface failed
@@ -233,7 +242,7 @@ namespace DIFixture
             var parentContainer = builder.Build();
             var childBuilder = parentContainer.CreateAChildContainer();
             var childContainer = childBuilder.Build();
-            Assert.Throws<KeyNotFoundException>(() => childContainer.Resolve<IErrorLogger>(ResolveSource.Local));
+            Assert.Throws<ServiceNotFoundException>(() => childContainer.Resolve<IErrorLogger>(ResolveSource.Local));
         }
 
         [Test]
@@ -280,7 +289,7 @@ namespace DIFixture
             var childBuilder = parentContainer.CreateAChildContainer();
             childBuilder.Register<IErrorLogger, ConsoleLogger>(ServiceLifetime.Singleton);
             var childContainer = childBuilder.Build();
-            Assert.Throws<KeyNotFoundException>(() => childContainer.Resolve<IErrorLogger>(ResolveSource.NonLocal));
+            Assert.Throws<ServiceNotFoundException>(() => childContainer.Resolve<IErrorLogger>(ResolveSource.NonLocal));
         }
 
         [Test]
@@ -308,6 +317,22 @@ namespace DIFixture
             Assert.That(childChildContainer.Resolve<IErrorLogger>(ResolveSource.NonLocal).GetType(), Is.EqualTo(typeof(ConsoleLogger)));
         }
 
+        [Test]
+        public void ResolveNonLocalWhenContainerDoNotHaveParent_ShouldThrowNullRefException()
+        {
+            builder.Register<IErrorLogger, ConsoleLogger>(ServiceLifetime.Singleton);
+            var container = builder.Build();
+            Assert.Throws<NullReferenceException>(() => container.Resolve<IErrorLogger>(ResolveSource.NonLocal));
+        }
+
+        [Test]
+        public void ResolveManyNonLocalWhenContainerDoNotHaveParent_ShouldThrowNullRefException()
+        {
+            builder.Register<IErrorLogger, ConsoleLogger>(ServiceLifetime.Singleton);
+            builder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
+            var container = builder.Build();
+            Assert.Throws<NullReferenceException>(() => container.ResolveMany<IErrorLogger>(ResolveSource.NonLocal));
+        }
         //resolve any 
         [Test]
         public void ResolveAnyWhenTypeExistsInChildAndInParent_GetFromChild()
@@ -343,6 +368,14 @@ namespace DIFixture
             Assert.That(resolved.Count(), Is.EqualTo(2));
             Assert.That(resolved.Where(logger => logger.GetType() == typeof(ConsoleLogger)).Count(), Is.EqualTo(1));
             Assert.That(resolved.Where(logger => logger.GetType() == typeof(FileLogger)).Count(), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void RegisterTypeWithValueParameter_ShouldThrowAnException()
+        {
+            builder.Register<TypeWithIntParameter>(ServiceLifetime.Singleton);
+            var container = builder.Build();
+            Assert.Throws<ArgumentException>(() => container.Resolve<TypeWithIntParameter>());
         }
     }
 }

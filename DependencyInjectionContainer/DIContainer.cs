@@ -1,25 +1,19 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Reflection;
-using DependencyInjectionContainer.Attributes;
-using System.Collections;
+﻿using System.Reflection;
 using System.Data;
-using System.Reflection.Metadata;
+using DependencyInjectionContainer.Exceptions;
 
 namespace DependencyInjectionContainer
 {
     public sealed record DIContainer
     {
-        private DIContainer curContainerParent;
+        private DIContainer containerParent;
 
-        internal DIContainer(List<Service> _services, DIContainer containerParent)
+        internal DIContainer(List<Service> _services, DIContainer _containerParent)
         {
             Services = _services;
-            curContainerParent = containerParent;
+            containerParent = _containerParent;
         }
+
         internal List<Service> Services { get; private set; }
 
         public DIContainerBuilder CreateAChildContainer()
@@ -29,25 +23,89 @@ namespace DependencyInjectionContainer
 
         public TypeToResolve Resolve<TypeToResolve>(ResolveSource resolveType = ResolveSource.Any) where TypeToResolve : class?
         {
-            return (TypeToResolve)Resolve(typeof(TypeToResolve), resolveType);
+            if (IsEnumerable(typeof(TypeToResolve)))
+            {
+                return (TypeToResolve)InvokeResolveManyForIEnumerable(typeof(TypeToResolve), this, resolveType);
+            }
+
+            if (resolveType == ResolveSource.NonLocal)
+            {
+                return ResolveNonLocal();
+            }
+
+            var servicesToResolve = Services.Where(service => IsServiceOfGivenType(service, typeof(TypeToResolve)));
+
+            if (servicesToResolve.Count() > 1)
+            {
+                throw new ArgumentException($"Many services with type {typeof(TypeToResolve)} was registered. Use ResolveMany to resolve them all");
+            }
+
+            if (servicesToResolve.Count() == 0)
+            {
+                if (containerParent != null && resolveType == ResolveSource.Any)
+                {
+                    return (TypeToResolve)InvokeGenericResolve(typeof(TypeToResolve), containerParent, ResolveSource.Any);
+                }
+                throw new ServiceNotFoundException(typeof(TypeToResolve));
+            }
+
+            Service serviceToResolve = servicesToResolve.First();
+
+            if (serviceToResolve.Implementation != null)
+            {
+                return (TypeToResolve)serviceToResolve.Implementation;
+            }
+
+            var implementation = GetCreatedImplementationForService(serviceToResolve);
+
+            if (serviceToResolve.Lifetime == ServiceLifetime.Singleton)
+            {
+                serviceToResolve.Implementation = implementation;
+            }
+
+            return (TypeToResolve)implementation;
+
+            TypeToResolve ResolveNonLocal()
+            {
+                if (containerParent == null)
+                    throw new NullReferenceException("This container does not have a parent");
+
+                return (TypeToResolve)InvokeGenericResolve(typeof(TypeToResolve), containerParent, ResolveSource.Any);
+            }
+
+            object GetCreatedImplementationForService(Service service)
+            {
+                var ctor = service.ImplementationType.GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).First();
+                //BindingFlags.Instance - gets non static members
+
+                var parameters = ctor?.
+                                 GetParameters()
+                                 .Select(parameter =>
+                                 {
+                                     if (IsEnumerable(parameter.ParameterType))
+                                     {
+                                         return InvokeResolveManyForIEnumerable(parameter.ParameterType, this, resolveType);
+                                     }
+                                     return InvokeGenericResolve(parameter.ParameterType, this, resolveType);
+                                 }).ToArray();
+
+                var implementation = ctor.Invoke(parameters);
+                return implementation;
+            }
+
+            bool IsEnumerable(Type type) => type.IsGenericType && (type.GetGenericTypeDefinition() == typeof(IEnumerable<>));
         }
 
         public IEnumerable<TypeToResolve> ResolveMany<TypeToResolve>(ResolveSource resolveSource = ResolveSource.Any) where TypeToResolve : class?
         {
-            return ResolveMany(typeof(TypeToResolve), resolveSource).Select(obj => (TypeToResolve)obj);
-        }
-
-        private IEnumerable<object> ResolveMany(Type typeToResolve, ResolveSource resolveSource = ResolveSource.Any)
-        {
-
-            List<object> resolvedServices = new List<object>();
+            List<TypeToResolve> resolvedServices = new List<TypeToResolve>();
 
             var resolveLocal = (ResolveSource resSource) =>
-                    resolvedServices.AddRange(Services.Where(service => IsServiceOfGivenType(service, typeToResolve))
-                                            .Select(service => Resolve(service.ImplementationType, resSource)).ToList());
+                    resolvedServices.AddRange(Services.Where(service => IsServiceOfGivenType(service, typeof(TypeToResolve)))
+                                            .Select(service => (TypeToResolve)InvokeGenericResolve(service.ImplementationType, this, resSource)));
 
             var resolveNonLocal = (ResolveSource resSource) =>
-            { if (curContainerParent != null) { resolvedServices.AddRange(curContainerParent.ResolveMany(typeToResolve, resSource)); } };
+            { if (containerParent != null) { resolvedServices.AddRange(containerParent.ResolveMany<TypeToResolve>(resSource)); } };
 
             switch (resolveSource)
             {
@@ -59,8 +117,8 @@ namespace DependencyInjectionContainer
                     resolveLocal(resolveSource);
                     break;
                 case ResolveSource.NonLocal:
-                    if (curContainerParent == null)
-                        throw new ArgumentException("This container does not have a parent");
+                    if (containerParent == null)
+                        throw new NullReferenceException("This container does not have a parent");
                     resolveNonLocal(ResolveSource.Any);
                     break;
                 default:
@@ -71,76 +129,34 @@ namespace DependencyInjectionContainer
             return resolvedServices;
         }
 
-        private object Resolve(Type typeToResolve, ResolveSource resolveType)
+        private bool IsServiceOfGivenType(Service service, Type type) => service.InterfaceType == type ||
+            service.ImplementationType == type;
+
+        private object InvokeResolveManyForIEnumerable(Type typeWithGeneric, object invokeFrom, ResolveSource resolveSource)
         {
-            if(typeToResolve.IsGenericType && typeToResolve.GetGenericTypeDefinition() == typeof(IEnumerable<>))
+            try
             {
-                return ResolveMany(typeToResolve.GetGenericArguments()[0], resolveType);
+                var typeToResolve = typeWithGeneric.GetGenericArguments()[0];
+                var resolveManyGeneric = typeof(DIContainer).GetMethod("ResolveMany").MakeGenericMethod(new[] { typeToResolve });
+                return resolveManyGeneric.Invoke(invokeFrom, new object[] { resolveSource });
             }
-
-            if(resolveType == ResolveSource.NonLocal)
+            catch(TargetInvocationException ex)
             {
-                if(curContainerParent == null)
-                    throw new ArgumentException("This container does not have a parent");
-
-                return curContainerParent.Resolve(typeToResolve, ResolveSource.Any);
-            } 
-
-            var servicesToResolve = Services.Where(service => IsServiceOfGivenType(service, typeToResolve));
-
-            if (servicesToResolve.Count() > 1)
-            {
-                throw new ArgumentException($"Many services with type {typeToResolve} was registered. Use ResolveMany to resolve them all");
-            }
-
-            if (servicesToResolve.Count() == 0)
-            {
-                if (curContainerParent != null && resolveType == ResolveSource.Any)
-                {
-                    return curContainerParent.Resolve(typeToResolve, resolveType);
-                }
-                else
-                {
-                    throw new KeyNotFoundException($"Do not have registrated services of type {typeToResolve.FullName}");
-                }
-            }
-
-            Service serviceToResolve = servicesToResolve.First();
-
-            if (serviceToResolve.Implementation != null)
-            {
-                return serviceToResolve.Implementation;
-            }
-
-            var implementation = GetCreatedImplementationForService(serviceToResolve);
-
-            if (serviceToResolve.Lifetime == ServiceLifetime.Singleton)
-            {
-                serviceToResolve.Implementation = implementation;
-            }
-
-            return implementation;
-
-            object GetCreatedImplementationForService(Service service)
-            {
-                var IsEnumerable = (Type type) => type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IEnumerable<>);
-
-                var parameters = service.ImplementationType.GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance).First()?.
-                                 GetParameters()
-                                 .Select(parameter => 
-                                 { 
-                                     if (!IsEnumerable(parameter.ParameterType)) 
-                                     {
-                                         return Resolve(parameter.ParameterType, resolveType);
-                                     }
-                                     return ResolveMany(parameter.ParameterType.GetGenericArguments()[0], resolveType);
-                                 }).ToArray();
-
-                return Activator.CreateInstance(service.ImplementationType, parameters);
+                throw ex.InnerException;
             }
         }
 
-        private bool IsServiceOfGivenType(Service service, Type type) => service.InterfaceType == type ||
-            service.ImplementationType == type;
+        private object InvokeGenericResolve(Type typeToResolve, object invokeFrom, ResolveSource resolveSource)
+        {
+            try
+            {
+                var resolveManyGeneric = typeof(DIContainer).GetMethod("Resolve").MakeGenericMethod(new[] { typeToResolve });
+                return resolveManyGeneric.Invoke(invokeFrom, new object[] { resolveSource });
+            }
+            catch (TargetInvocationException ex)
+            {
+                throw ex.InnerException;
+            }
+        }
     }
 }
