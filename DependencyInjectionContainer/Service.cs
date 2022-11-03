@@ -1,23 +1,45 @@
-﻿namespace DependencyInjectionContainer
+﻿using DependencyInjectionContainer.Enums;
+
+namespace DependencyInjectionContainer
 {
-    internal sealed record Service
+    internal sealed class Service
     {
-        public Service(Type implementationType, ServiceLifetime lifetime, Type interfaceType = null)
+        internal Service(Type interfaceType, Type implementationType, ServiceLifetime lifetime)
         {
             InterfaceType = interfaceType;
             ImplementationType = implementationType;
             Lifetime = lifetime;
+            RegistrationType = RegistrationType.ByInterface;
         }
 
-        public Service(object implementation, ServiceLifetime lifetime)
+        internal Service(Type implementationType, ServiceLifetime lifetime)
+        {
+            ImplementationType = implementationType;
+            Lifetime = lifetime;
+            RegistrationType = RegistrationType.ByImplementationType;
+        }
+
+        internal Service(object implementation, ServiceLifetime lifetime)
         {
             Implementation = implementation;
             Lifetime = lifetime;
             ImplementationType = Implementation.GetType();
+            RegistrationType = RegistrationType.ByImplementationType;
         }
-        public Type InterfaceType { get; init; }
-        public Type ImplementationType { get; init; }
-        public ServiceLifetime Lifetime { get; init; }
-        public object Implementation { get; set; }
+
+        internal RegistrationType RegistrationType { get; init; }
+        internal Type InterfaceType { get; init; }
+        internal Type ImplementationType { get; init; }
+        internal ServiceLifetime Lifetime { get; init; }
+        internal object Implementation { get; set; }
+
+        internal bool ImplementsType(Type type)
+        {
+            bool implementsInterface = type.IsAbstract && RegistrationType == RegistrationType.ByInterface 
+                                       && InterfaceType == type;
+
+            return implementsInterface || ImplementationType == type;
+        }
+
     }
 }

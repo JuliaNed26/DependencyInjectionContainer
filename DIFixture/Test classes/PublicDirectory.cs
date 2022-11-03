@@ -1,14 +1,9 @@
-﻿using DependencyInjectionContainer;
-using DependencyInjectionContainer.Attributes;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using DependencyInjectionContainer.Attributes;
+using DependencyInjectionContainer.Enums;
 
 namespace DIFixture.Test_classes
 {
-    [Register(ServiceLifetime.Transient,typeof(IUserDirectory))]
+    [Register(typeof(IUserDirectory), ServiceLifetime.Transient)]
     internal sealed class PublicDirectory : IUserDirectory
     {
         public string GetInfo()

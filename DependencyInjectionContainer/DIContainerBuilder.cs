@@ -1,88 +1,117 @@
-﻿using System.Collections;
-using System.ComponentModel.Composition;
+﻿using DependencyInjectionContainer.Attributes;
+using DependencyInjectionContainer.Enums;
 using System.Reflection;
-using DependencyInjectionContainer.Attributes;
 
 namespace DependencyInjectionContainer
 {
     public sealed class DIContainerBuilder
     {
         private List<Service> services;
-        private DIContainer parent;
+        private DIContainer parentContainer;
+        private DIContainer constructedContainer;
         private bool isBuild;
 
         public DIContainerBuilder()
         {
             services = new List<Service>();
-            parent = null;
             isBuild = false;
         }
 
-        internal DIContainerBuilder(DIContainer _parent)
+        internal DIContainerBuilder(DIContainer parent) : this() => parentContainer = parent;
+
+        public void Register<TImplementationInterface, TImplementation>(ServiceLifetime lifetime) 
+                            where TImplementation : TImplementationInterface
         {
-            services = new List<Service>();
-            parent = _parent;
-            isBuild = false;
+            ThrowIfContainerBuilt();
+            ThrowIfImplementationTypeUnappropriate(typeof(TImplementation));
+
+            services.Add(new Service(typeof(TImplementationInterface), typeof(TImplementation), lifetime));
         }
 
-        public void Register<TImplementationInterface, TImplementation>(ServiceLifetime lifetime) where TImplementation : TImplementationInterface
-        {
-            ThrowIfTypeUnappropriate(typeof(TImplementation));
-            services.Add(new Service(typeof(TImplementation), lifetime, typeof(TImplementationInterface)));
-        }
-
-        public void Register<TImplementation>(ServiceLifetime lifetime) where TImplementation : class?
+        public void Register<TImplementation>(ServiceLifetime lifetime)
+                            where TImplementation : class
         {
             if(typeof(TImplementation).IsAbstract)
             {
                 throw new ArgumentException("Can't register type without assigned implementation type");
             }
-            ThrowIfTypeUnappropriate(typeof(TImplementation));
+            ThrowIfContainerBuilt();
+            ThrowIfImplementationTypeUnappropriate(typeof(TImplementation));
+
             services.Add(new Service(typeof(TImplementation), lifetime));
         }
 
         public void RegisterWithImplementation(object implementation, ServiceLifetime lifetime)
         {
-            ThrowIfTypeUnappropriate(implementation.GetType());
+            ThrowIfContainerBuilt();
+            ThrowIfImplementationTypeUnappropriate(implementation.GetType());
+
             services.Add(new Service(implementation, lifetime));
         }
 
         public void RegisterAssemblyByAttributes(Assembly assembly)
         {
-            foreach (var type in assembly.GetTypes().Where(t => t.GetCustomAttribute<RegisterAttribute>() != null))
+            ThrowIfContainerBuilt();
+
+            var typesWithRegisterAttribute = assembly
+                                             .GetTypes()
+                                             .Where(t => t.GetCustomAttribute<RegisterAttribute>() != null);
+
+            foreach (var type in typesWithRegisterAttribute)
             {
-                var attribute = type.GetCustomAttribute<RegisterAttribute>();
-                ThrowIfTypeUnappropriate(type);
-                services.Add(new Service(type, attribute.Lifetime, attribute.InterfaceType));
+                RegisterAttribute serviceInfo = type.GetCustomAttribute<RegisterAttribute>();
+                ThrowIfImplementationTypeUnappropriate(type);
+                services.Add(new Service(serviceInfo.InterfaceType, type, serviceInfo.Lifetime));
             }
         }
 
         public DIContainer Build()
         {
-            isBuild = true;
-            return new DIContainer(services, parent);
+            if(!isBuild)
+            {
+                isBuild = true;
+                constructedContainer = new DIContainer(services, parentContainer);
+            }
+            return constructedContainer;
         }
 
-        private void ThrowIfTypeUnappropriate(Type type)
+        private void ThrowIfContainerBuilt()
         {
-            if(parent != null && parent.Services.Where(service => service.ImplementationType == type).Any())
-            {
-                throw new ArgumentException($"Service with type {type.FullName} has been already registered");
-            }
-            if(isBuild)
+            if (isBuild)
             {
                 throw new ArgumentException("This container was built already");
             }
-            if (type.GetConstructors().Count() > 1)
+        }
+
+        private void ThrowIfImplementationTypeUnappropriate(Type implementationType)
+        {
+            if (IsServiceWithImplementationTypeRegistered())
+            {
+                throw new ArgumentException($"Service with type {implementationType.FullName} has been already registered");
+            }
+
+            if (implementationType.GetConstructors().Count() > 1)
             {
                 throw new ArgumentException("Can't register type with more than one constructor");
             }
 
-            bool containsServiceWithType = services.Any(service => service.ImplementationType == type);
-
-            if (containsServiceWithType)
+            bool IsServiceWithImplementationTypeRegistered()
             {
-                throw new ArgumentException($"Service with type {type.FullName} has been already registered");
+                if (services.Any(service => service.ImplementationType == implementationType))
+                {
+                    return true;
+                }
+
+                DIContainer curContainer = parentContainer;
+                while(curContainer != null)
+                {
+                    if (curContainer.IsServiceRegistered(implementationType))
+                    {
+                        return true;
+                    }
+                    curContainer = curContainer.ContainerParent;
+                }
+                return false;
             }
         }
     }

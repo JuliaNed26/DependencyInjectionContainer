@@ -4,12 +4,11 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace DependencyInjectionContainer
+namespace DependencyInjectionContainer.Enums
 {
-    public enum ResolveSource
+    internal enum RegistrationType
     {
-        Local,
-        NonLocal,
-        Any
+        ByInterface,
+        ByImplementationType
     }
 }

@@ -1,18 +1,11 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace DIFixture.Test_classes
+﻿namespace DIFixture.Test_classes
 {
     internal class TypeWithIntParameter
     {
-        public readonly string Str;
-        public readonly int Num;
+        public readonly int num;
         internal TypeWithIntParameter(int i) 
         {
-            Num = i; 
+            num = i; 
         }
     }
 }

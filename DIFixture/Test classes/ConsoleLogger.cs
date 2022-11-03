@@ -1,14 +1,9 @@
-﻿using DependencyInjectionContainer;
-using DependencyInjectionContainer.Attributes;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using DependencyInjectionContainer.Attributes;
+using DependencyInjectionContainer.Enums;
 
 namespace DIFixture.Test_classes
 {
-    [Register(ServiceLifetime.Singleton,typeof(IErrorLogger))]
+    [Register(typeof(IErrorLogger), ServiceLifetime.Singleton)]
     internal sealed class ConsoleLogger : IErrorLogger
     {
         public string Log(string message)

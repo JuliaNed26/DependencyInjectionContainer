@@ -1,18 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace DIFixture.Test_classes
+﻿namespace DIFixture.Test_classes
 {
     internal sealed class ClassWithManyConstructors
     {
         IErrorLogger errorLogger;
         public ClassWithManyConstructors() { }
-        public ClassWithManyConstructors(IErrorLogger _errorLogger) 
+        public ClassWithManyConstructors(IErrorLogger logger) 
         { 
-            errorLogger = _errorLogger;
+            errorLogger = logger;
         }
     }
 }
