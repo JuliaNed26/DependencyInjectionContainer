@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using DependencyInjectionContainer.Enums;
+﻿using DependencyInjectionContainer.Enums;
 
 namespace DependencyInjectionContainer.Attributes
 {
@@ -16,7 +11,7 @@ namespace DependencyInjectionContainer.Attributes
             Lifetime = lifetime;
         }
 
-        public Type InterfaceType { get; private set; }
-        public ServiceLifetime Lifetime { get; private set; }
+        public Type InterfaceType { get; }
+        public ServiceLifetime Lifetime { get; }
     }
 }

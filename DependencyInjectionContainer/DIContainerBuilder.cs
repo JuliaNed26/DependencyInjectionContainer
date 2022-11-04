@@ -19,35 +19,28 @@ namespace DependencyInjectionContainer
 
         internal DIContainerBuilder(DIContainer parent) : this() => parentContainer = parent;
 
-        public void Register<TImplementationInterface, TImplementation>(ServiceLifetime lifetime) 
-                            where TImplementation : TImplementationInterface
+        public void Register<TImplementationInterface, TImplementation>(ServiceLifetime lifetime) where TImplementation : TImplementationInterface
         {
-            ThrowIfContainerBuilt();
-            ThrowIfImplementationTypeUnappropriate(typeof(TImplementation));
-
-            services.Add(new Service(typeof(TImplementationInterface), typeof(TImplementation), lifetime));
+            ThrowIfContainerBuilt()
+                .ThrowIfImplementationTypeUnappropriate(typeof(TImplementation))
+                .services.Add(new Service(typeof(TImplementationInterface), typeof(TImplementation), lifetime));
         }
 
-        public void Register<TImplementation>(ServiceLifetime lifetime)
-                            where TImplementation : class
+        public void Register<TImplementation>(ServiceLifetime lifetime) where TImplementation : class
         {
             if(typeof(TImplementation).IsAbstract)
             {
                 throw new ArgumentException("Can't register type without assigned implementation type");
             }
-            ThrowIfContainerBuilt();
-            ThrowIfImplementationTypeUnappropriate(typeof(TImplementation));
-
-            services.Add(new Service(typeof(TImplementation), lifetime));
+            ThrowIfContainerBuilt().
+                ThrowIfImplementationTypeUnappropriate(typeof(TImplementation))
+                .services.Add(new Service(typeof(TImplementation), lifetime));
         }
 
-        public void RegisterWithImplementation(object implementation, ServiceLifetime lifetime)
-        {
-            ThrowIfContainerBuilt();
-            ThrowIfImplementationTypeUnappropriate(implementation.GetType());
-
-            services.Add(new Service(implementation, lifetime));
-        }
+        public void RegisterWithImplementation(object implementation, ServiceLifetime lifetime) =>
+            ThrowIfContainerBuilt()
+                .ThrowIfImplementationTypeUnappropriate(implementation.GetType())
+                .services.Add(new Service(implementation, lifetime));
 
         public void RegisterAssemblyByAttributes(Assembly assembly)
         {
@@ -59,7 +52,7 @@ namespace DependencyInjectionContainer
 
             foreach (var type in typesWithRegisterAttribute)
             {
-                RegisterAttribute serviceInfo = type.GetCustomAttribute<RegisterAttribute>();
+                var serviceInfo = type.GetCustomAttribute<RegisterAttribute>();
                 ThrowIfImplementationTypeUnappropriate(type);
                 services.Add(new Service(serviceInfo.InterfaceType, type, serviceInfo.Lifetime));
             }
@@ -67,30 +60,32 @@ namespace DependencyInjectionContainer
 
         public DIContainer Build()
         {
-            if(!isBuild)
+            if (isBuild)
             {
-                isBuild = true;
-                constructedContainer = new DIContainer(services, parentContainer);
+                return constructedContainer;
             }
+            isBuild = true;
+            constructedContainer = new DIContainer(services, parentContainer);
             return constructedContainer;
         }
 
-        private void ThrowIfContainerBuilt()
+        private DIContainerBuilder ThrowIfContainerBuilt()
         {
             if (isBuild)
             {
                 throw new ArgumentException("This container was built already");
             }
+            return this;
         }
 
-        private void ThrowIfImplementationTypeUnappropriate(Type implementationType)
+        private DIContainerBuilder ThrowIfImplementationTypeUnappropriate(Type implementationType)
         {
             if (IsServiceWithImplementationTypeRegistered())
             {
                 throw new ArgumentException($"Service with type {implementationType.FullName} has been already registered");
             }
 
-            if (implementationType.GetConstructors().Count() > 1)
+            if (implementationType.GetConstructors().Length > 1)
             {
                 throw new ArgumentException("Can't register type with more than one constructor");
             }
@@ -102,7 +97,7 @@ namespace DependencyInjectionContainer
                     return true;
                 }
 
-                DIContainer curContainer = parentContainer;
+                var curContainer = parentContainer;
                 while(curContainer != null)
                 {
                     if (curContainer.IsServiceRegistered(implementationType))
@@ -113,6 +108,7 @@ namespace DependencyInjectionContainer
                 }
                 return false;
             }
+            return this;
         }
     }
 }
