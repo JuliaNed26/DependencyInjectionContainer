@@ -21,39 +21,71 @@ namespace DependencyInjectionContainer
 
         public TTypeToResolve Resolve<TTypeToResolve>(ResolveSource resolveType = ResolveSource.Any) where TTypeToResolve : class
         {
-            if (IsEnumerable(typeof(TTypeToResolve)))
+            TTypeToResolve resolvedService;
+
+            if (TryResolveIfEnumerable(out resolvedService))
             {
-                var typeToResolve = typeof(TTypeToResolve).GetGenericArguments()[0];
-                return (TTypeToResolve)InvokeGenericResolveMany(typeToResolve, this, resolveType);
+                return resolvedService;
             }
 
-            if (resolveType == ResolveSource.NonLocal)
+            var serviceToResolve = FindServiceImplementsType();
+
+            switch (resolveType)
             {
-                return ResolveNonLocal();
+                case ResolveSource.NonLocal:
+                    resolvedService = ResolveNonLocal();
+                    break;
+
+                case ResolveSource.Any:
+                    if(serviceToResolve == null && ContainerParent == null)
+                    {
+                        throw new ServiceNotFoundException(typeof(TTypeToResolve));
+                    }
+                    resolvedService = serviceToResolve == null
+                                      ? ResolveNonLocal() 
+                                      : GetImplementation(serviceToResolve);
+                    break;
+
+                case ResolveSource.Local:
+                    if(serviceToResolve == null)
+                    {
+                        throw new ServiceNotFoundException(typeof(TTypeToResolve));
+                    }
+                    resolvedService = GetImplementation(serviceToResolve);
+                    break;
+
             }
 
-            var servicesImplementsType = registeredServices
-                                         .Where(service => service.ImplementsType(typeof(TTypeToResolve)))
-                                         .ToList();
+            return resolvedService;
 
-            if (servicesImplementsType.Count > 1)
+            bool TryResolveIfEnumerable(out TTypeToResolve resolved)
             {
-                throw new ArgumentException($"Many services with type {typeof(TTypeToResolve)} was registered. Use ResolveMany to resolve them all");
+                if (IsEnumerable(typeof(TTypeToResolve)))
+                {
+                    var typeToResolve = typeof(TTypeToResolve).GetGenericArguments()[0];
+                    resolved = (TTypeToResolve)InvokeGenericResolveMany(typeToResolve, this, resolveType);
+                    return true;
+                }
+                resolved = null;
+                return false;
+
+                bool IsEnumerable(Type type) => type.IsGenericType && (type.GetGenericTypeDefinition() == typeof(IEnumerable<>));
             }
 
-            if (servicesImplementsType.Count == 0 && (resolveType != ResolveSource.Any || ContainerParent == null))
+            Service FindServiceImplementsType()
             {
-                throw new ServiceNotFoundException(typeof(TTypeToResolve));
+                var servicesImplementsType = registeredServices
+                                             .Where(service => service.ImplementsType(typeof(TTypeToResolve)))
+                                             .ToList();
+
+
+                if (servicesImplementsType.Count > 1)
+                {
+                    throw new ArgumentException($"Many services with type {typeof(TTypeToResolve)} was registered. Use ResolveMany to resolve them all");
+                }
+
+                return servicesImplementsType.Count == 0 ? null : servicesImplementsType.First();
             }
-
-            if (servicesImplementsType.Count == 0)
-            {
-                return (TTypeToResolve)InvokeGenericResolve(typeof(TTypeToResolve), ContainerParent, ResolveSource.Any);
-            }
-
-            return GetImplementation(servicesImplementsType.First());
-
-            bool IsEnumerable(Type type) => type.IsGenericType && (type.GetGenericTypeDefinition() == typeof(IEnumerable<>));
 
             TTypeToResolve ResolveNonLocal()
             {

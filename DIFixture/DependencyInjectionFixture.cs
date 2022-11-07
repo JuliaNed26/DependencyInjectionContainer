@@ -70,12 +70,11 @@ namespace DIFixture
         }
 
         [Test]
-        public void DIContainerBuilderBuild_TheSecondBuild_ReturnsTheSameContainer()
+        public void DIContainerBuilderBuild_TheSecondBuild_ShouldThrowInvalidOperationException()
         {
             builder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Transient);
             var container1 = builder.Build();
-            var container2 = builder.Build();
-            Assert.That(container1, Is.EqualTo(container2));
+            Assert.Throws<InvalidOperationException>(() => builder.Build());
         }
 
         [Test]

@@ -8,7 +8,6 @@ namespace DependencyInjectionContainer
     {
         private List<Service> services;
         private DIContainer parentContainer;
-        private DIContainer constructedContainer;
         private bool isBuild;
 
         public DIContainerBuilder()
@@ -62,11 +61,10 @@ namespace DependencyInjectionContainer
         {
             if (isBuild)
             {
-                return constructedContainer;
+                throw new InvalidOperationException("Container was built already");
             }
             isBuild = true;
-            constructedContainer = new DIContainer(services, parentContainer);
-            return constructedContainer;
+            return new DIContainer(services, parentContainer);
         }
 
         private DIContainerBuilder ThrowIfContainerBuilt()
