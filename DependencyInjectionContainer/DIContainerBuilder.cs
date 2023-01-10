@@ -27,7 +27,7 @@ namespace DependencyInjectionContainer
 
         public void Register<TImplementation>(ServiceLifetime lifetime) where TImplementation : class
         {
-            if(typeof(TImplementation).IsAbstract)
+            if (typeof(TImplementation).IsAbstract)
             {
                 throw new ArgumentException("Can't register type without assigned implementation type");
             }
@@ -90,15 +90,15 @@ namespace DependencyInjectionContainer
 
             bool IsServiceWithImplementationTypeRegistered()
             {
-                if (services.Any(service => service.ImplementationType == implementationType))
+                if (services.Any(service => service.Value == implementationType))
                 {
                     return true;
                 }
 
                 var curContainer = parentContainer;
-                while(curContainer != null)
+                while (curContainer != null)
                 {
-                    if (curContainer.IsServiceRegistered(implementationType))
+                    if (curContainer.IsImplementationRegistered(implementationType))
                     {
                         return true;
                     }

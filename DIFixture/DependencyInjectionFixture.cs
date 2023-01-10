@@ -18,7 +18,7 @@ namespace DIFixture
         [Test]
         public void DIContainerBuilderRegister_TypeWithManyCtors_ShouldThrowArgumentException()
         {
-            Assert.Throws<ArgumentException>( () => builder.Register<ClassWithManyConstructors>(ServiceLifetime.Singleton));
+            Assert.Throws<ArgumentException>(() => builder.Register<ClassWithManyConstructors>(ServiceLifetime.Singleton));
             Assert.Throws<ArgumentException>(() => builder.Register<ClassWithManyConstructors>(ServiceLifetime.Transient));
         }
 
@@ -61,7 +61,7 @@ namespace DIFixture
         public void DIContainerBuilderRegister_RegisterAfterBuild_ShouldThrowArgumentException()
         {
             builder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Transient);
-            var container = builder.Build(); 
+            var container = builder.Build();
             Assert.Throws<ArgumentException>(() => builder.Register<IErrorLogger, ConsoleLogger>(ServiceLifetime.Singleton));
             Assert.Throws<ArgumentException>(() => builder.Register<ConsoleLogger>(ServiceLifetime.Singleton));
             Assert.Throws<ArgumentException>(() => builder.Register<IErrorLogger, ConsoleLogger>(ServiceLifetime.Transient));
@@ -117,12 +117,20 @@ namespace DIFixture
         }
 
         [Test]
-        public void DIContainerBuilderResolve_ComplexGraph_ShouldReturnImplementation()
+        public void DIContainerResolve_ServiceRegisteredByInterfaceResolveByImplementationType_ShouldThrowServiceNotFoundException()
+        {
+            builder.Register<IErrorLogger, ConsoleLogger>(ServiceLifetime.Singleton);
+            var container = builder.Build();
+            Assert.Throws<ServiceNotFoundException>(() => container.Resolve<ConsoleLogger>());
+        }
+
+        [Test]
+        public void DIContainerResolve_ComplexGraph_ShouldReturnImplementation()
         {
             builder.Register<IErrorLogger, ConsoleLogger>(ServiceLifetime.Singleton);
             builder.Register<IUserDirectory, PublicDirectory>(ServiceLifetime.Transient);
-            builder.Register<IUserDirectory,HiddenDirectory>(ServiceLifetime.Transient);
-            builder.Register<IUserFile,SystemFile>(ServiceLifetime.Transient);
+            builder.Register<IUserDirectory, HiddenDirectory>(ServiceLifetime.Transient);
+            builder.Register<IUserFile, SystemFile>(ServiceLifetime.Transient);
             builder.Register<IUserFile, UserFile>(ServiceLifetime.Transient);
             builder.Register<FileSystem>(ServiceLifetime.Singleton);
             var container = builder.Build();
@@ -148,18 +156,6 @@ namespace DIFixture
             Assert.That(resolved.Count(), Is.EqualTo(2));
             Assert.That(resolved.Where(logger => logger.GetType() == typeof(ConsoleLogger)).Count(), Is.EqualTo(1));
             Assert.That(resolved.Where(logger => logger.GetType() == typeof(FileLogger)).Count(), Is.EqualTo(1));
-        }
-
-        [Test]
-        public void DIContainerResolve_ResolveIEnumerableByImplementationType_ShouldReturnEnumerableWithOneObject()
-        {
-            builder.Register<IErrorLogger, ConsoleLogger>(ServiceLifetime.Singleton);
-            builder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
-            var container = builder.Build();
-            var resolved = container.Resolve<IEnumerable<ConsoleLogger>>();
-            Assert.That(resolved.Count(), Is.EqualTo(1));
-            Assert.That(resolved.Where(logger => logger.GetType() == typeof(ConsoleLogger)).Count(), Is.EqualTo(1));
-            Assert.That(resolved.Where(logger => logger.GetType() == typeof(FileLogger)).Count(), Is.EqualTo(0));
         }
 
         [Test]

@@ -1,3 +1,18 @@
-﻿namespace DIFixture.Test_classes;
+﻿using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
 
-internal record TypeWithIntParameter(int I);
+namespace DIFixture.Test_classes
+{
+    internal class TypeWithIntParameter
+    {
+        public readonly string Str;
+        public readonly int Num;
+        internal TypeWithIntParameter(int i) 
+        {
+            Num = i; 
+        }
+    }
+}

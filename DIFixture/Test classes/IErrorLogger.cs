@@ -1,4 +1,7 @@
-﻿namespace DIFixture.Test_classes
+﻿using DependencyInjectionContainer;
+using DependencyInjectionContainer.Attributes;
+
+namespace DIFixture.Test_classes
 {
     internal interface IErrorLogger
     {

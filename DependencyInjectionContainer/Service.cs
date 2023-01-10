@@ -6,40 +6,30 @@ namespace DependencyInjectionContainer
     {
         internal Service(Type interfaceType, Type implementationType, ServiceLifetime lifetime)
         {
-            InterfaceType = interfaceType;
-            ImplementationType = implementationType;
+            if (!interfaceType.IsAbstract)
+                throw new ArgumentException("First type should be abstract");
+
+            Key = interfaceType;
+            Value = implementationType;
             Lifetime = lifetime;
-            RegistrationType = RegistrationType.ByInterface;
         }
 
         internal Service(Type implementationType, ServiceLifetime lifetime)
         {
-            ImplementationType = implementationType;
+            Key = Value = implementationType;
             Lifetime = lifetime;
-            RegistrationType = RegistrationType.ByImplementationType;
         }
 
         internal Service(object implementation, ServiceLifetime lifetime)
         {
+            Key = Value = implementation.GetType();
             Implementation = implementation;
             Lifetime = lifetime;
-            ImplementationType = Implementation.GetType();
-            RegistrationType = RegistrationType.ByImplementationType;
         }
 
-        internal RegistrationType RegistrationType { get; init; }
-        internal Type InterfaceType { get; init; }
-        internal Type ImplementationType { get; init; }
+        internal Type Key { get; init; }
+        internal Type Value { get; init; }
         internal ServiceLifetime Lifetime { get; init; }
         internal object Implementation { get; set; }
-
-        internal bool ImplementsType(Type type)
-        {
-            bool implementsInterface = type.IsAbstract && RegistrationType == RegistrationType.ByInterface 
-                                       && InterfaceType == type;
-
-            return implementsInterface || ImplementationType == type;
-        }
-
     }
 }
