@@ -12,7 +12,7 @@ namespace DependencyInjectionContainer.Attributes
     {
         public Type InterfaceType { get; private set; }
         public ServiceLifetime Lifetime { get; private set; }
-        public RegisterAttribute(ServiceLifetime lifetime, Type interfaceType)
+        public RegisterAttribute(ServiceLifetime lifetime, Type interfaceType = null)
         {
             InterfaceType = interfaceType;
             Lifetime = lifetime;

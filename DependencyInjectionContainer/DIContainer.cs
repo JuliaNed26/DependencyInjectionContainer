@@ -1,35 +1,48 @@
 ﻿using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using DependencyInjectionContainer.Enums;
 using DependencyInjectionContainer.Exceptions;
 
 namespace DependencyInjectionContainer
 {
-    public sealed class DIContainer
+    public sealed class DIContainer : IDisposable
     {
-        private readonly IEnumerable<Service> registeredServices;
+        internal readonly IEnumerable<Service> registeredServices;
+        ServicesInstanceList servicesInstanceList;
 
         internal DIContainer(IEnumerable<Service> services, DIContainer parent)
         {
+            servicesInstanceList = new ServicesInstanceList();
             registeredServices = services;
             ContainerParent = parent;
+            IsDisposed = false;
         }
 
-        internal DIContainer ContainerParent { get; init; }
+        public bool IsDisposed { get; private set; }
+        internal DIContainer ContainerParent { get; private set; }
 
-        public DIContainerBuilder CreateChildContainer() => new(this);
+        public DIContainerBuilder CreateChildContainer()
+        {
+            ThrowIfDisposed();
+            return new(this);
+        }
 
         public TTypeToResolve Resolve<TTypeToResolve>(ResolveSource resolveType = ResolveSource.Any) where TTypeToResolve : class
         {
+            ThrowIfDisposed();
             return (TTypeToResolve)Resolve(typeof(TTypeToResolve), resolveType);
         }
 
         public IEnumerable<TTypeToResolve> ResolveMany<TTypeToResolve>(ResolveSource resolveSource = ResolveSource.Any) where TTypeToResolve : class
         {
+            ThrowIfDisposed();
+
             switch (resolveSource)
             {
                 case ResolveSource.Any:
-                    return ResolveLocal().Concat(ResolveNonLocal());
+                    IEnumerable<TTypeToResolve> resolvedLocal = ResolveLocal();
+                    return resolvedLocal.Concat(ResolveNonLocalImplementationTypesWhichWereNotResolved(resolvedLocal));
 
                 case ResolveSource.Local:
                     return ResolveLocal();
@@ -49,18 +62,33 @@ namespace DependencyInjectionContainer
             IEnumerable<TTypeToResolve> ResolveLocal() =>
                 registeredServices
                     .Where(service => service.Key == typeof(TTypeToResolve))
-                    .Select(service => (TTypeToResolve)GetOrCreateServiceImplementationSaveIfSingleton(service, ResolveSource.Local));
+                    .Select(service => (TTypeToResolve)GetOrCreateServiceImplementation_SaveIfSingleton(service, ResolveSource.Local));
 
             IEnumerable<TTypeToResolve> ResolveNonLocal()
                 => ContainerParent != null ? ContainerParent.ResolveMany<TTypeToResolve>() : Enumerable.Empty<TTypeToResolve>();
+
+            IEnumerable<TTypeToResolve> ResolveNonLocalImplementationTypesWhichWereNotResolved(IEnumerable<TTypeToResolve> resolvedServices) =>
+                ResolveNonLocal().Where(resolved => !resolvedServices.Any(item => item.GetType() == resolved.GetType()));
         }
 
-        internal bool IsImplementationRegistered(Type type)
+        public void Dispose()
         {
-            if (type.IsAbstract)
-                throw new ArgumentException("Implementation could not be abstract type");
+            if (!IsDisposed)
+            {
+                servicesInstanceList.Dispose();
+                servicesInstanceList = null;
+                ContainerParent = null;
+                GC.SuppressFinalize(this);
+                IsDisposed = true;
+            }
+        }
 
-            return registeredServices.Any(service => service.Value == type);
+        private void ThrowIfDisposed()
+        { 
+            if (IsDisposed)
+            {
+                throw new NullReferenceException("This container was disposed");
+            }
         }
 
         private object Resolve(Type typeToResolve, ResolveSource resolveSource)
@@ -83,56 +111,66 @@ namespace DependencyInjectionContainer
                     {
                         throw new NullReferenceException("Current container do not have parent");
                     }
-
                     return ContainerParent.Resolve(typeToResolve, ResolveSource.Any);
 
                 case ResolveSource.Any:
-                    Service foundLocal;
-                    if (TryGetRegistration(typeToResolve, out foundLocal))
+                    Service foundService;
+                    if (TryGetRegistration(typeToResolve, ResolveSource.Any, out foundService))
                     {
-                        return GetOrCreateServiceImplementationSaveIfSingleton(foundLocal, resolveSource);
+                        return GetOrCreateServiceImplementation_SaveIfSingleton(foundService, resolveSource);
                     }
-
-                    if (ContainerParent == null)
-                    {
-                        throw new ServiceNotFoundException(typeToResolve);
-                    }
-
-                    return ContainerParent.Resolve(typeToResolve, ResolveSource.Any);
+                    throw new ServiceNotFoundException(typeToResolve);
 
                 case ResolveSource.Local:
-                    if (!TryGetRegistration(typeToResolve, out foundLocal))
+                    if (TryGetRegistration(typeToResolve, ResolveSource.Local, out foundService))
                     {
-                        throw new ServiceNotFoundException(typeToResolve);
+                        return GetOrCreateServiceImplementation_SaveIfSingleton(foundService, resolveSource);
                     }
-
-                    return GetOrCreateServiceImplementationSaveIfSingleton(foundLocal, resolveSource);
+                    throw new ServiceNotFoundException(typeToResolve);
 
                 default:
                     throw new ArgumentException("Wrong resolve source type");
             }
         }
 
-        private bool TryGetRegistration(Type typeForSearch, out Service foundService)
+        private bool TryGetRegistration(Type typeForSearch, ResolveSource resolveSource, out Service foundService)
         {
-            var servicesImplementsType = registeredServices
+            List<Service> servicesImplementsType = new List<Service>();
+
+
+            if(resolveSource == ResolveSource.Local)
+            {
+                servicesImplementsType = registeredServices
                                          .Where(service => service.Key == typeForSearch)
                                          .ToList();
+            }
 
+            else if (resolveSource == ResolveSource.Any)
+            {
+                var curContainer = this;
+                while (curContainer != null && servicesImplementsType.Count == 0)
+                {
+                    servicesImplementsType = curContainer.registeredServices
+                                                         .Where(service => service.Key == typeForSearch)
+                                                         .ToList();
+                    curContainer = curContainer.ContainerParent;
+                }
+            }
 
             if (servicesImplementsType.Count > 1)
             {
-                throw new ArgumentException($"Many services with type {typeForSearch} was registered. Use ResolveMany to resolve them all");
+                throw new ResolveServiceException($"Many services with type {typeForSearch} was registered. Use ResolveMany to resolve them all");
             }
 
             foundService = servicesImplementsType.FirstOrDefault();
             return foundService != null;
         }
 
-        private object GetOrCreateServiceImplementationSaveIfSingleton(Service service, ResolveSource resolveSource)
+        private object GetOrCreateServiceImplementation_SaveIfSingleton(Service service, ResolveSource resolveSource)
         {
             if (service.Implementation != null)
             {
+                servicesInstanceList.Add(service.Implementation);
                 return service.Implementation;
             }
 
@@ -141,16 +179,14 @@ namespace DependencyInjectionContainer
             if (service.Lifetime == ServiceLifetime.Singleton)
             {
                 service.Implementation = implementation;
+                servicesInstanceList.Add(service.Implementation); 
             }
 
             return implementation;
 
             object GetCreatedImplementationForService()
             {
-                var ctor = service.Value
-                                  .GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-                                  .First();
-                //BindingFlags.Instance - gets non static members
+                var ctor = GetAppropriateCtor();
 
                 var parameters = ctor
                                  .GetParameters()
@@ -159,6 +195,54 @@ namespace DependencyInjectionContainer
 
                 var implementation = ctor.Invoke(parameters);
                 return implementation;
+
+                ConstructorInfo GetAppropriateCtor()
+                {
+                    var constructors = service.Value
+                                       .GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
+                                       .OrderByDescending(ctor => ctor.GetParameters().Count());
+                    //BindingFlags.Instance - gets non static members
+
+                    ConstructorInfo appropriateCtor = null;
+
+                    foreach (var constructor in constructors)
+                    {
+                        if (appropriateCtor != null &&
+                            constructor.GetParameters().Count() < appropriateCtor.GetParameters().Count())
+                        {
+                            break;
+                        }
+
+                        bool isCurAppropriate = true;
+                        foreach(var parameter in constructor.GetParameters())
+                        {
+                            Service foundService;
+                            if (!parameter.ParameterType.IsEnumerable() && !TryGetRegistration(parameter.ParameterType, resolveSource, out foundService))
+                            {
+                                isCurAppropriate = false;
+                                break;
+                            }
+                        }
+
+                        if(isCurAppropriate)
+                        {
+                            if (appropriateCtor == null)
+                            {
+                                appropriateCtor = constructor;
+                            }
+                            else
+                            {
+                                throw new ResolveServiceException("There's ambiguity when discovering constructors");
+                            }
+                        }
+                    }
+                    if(appropriateCtor == null)
+                    {
+                        throw new ResolveServiceException("Could not find appropriate constructor. Maybe you forgot to register some services or " +
+                            "constructor contains value parameter.");
+                    }
+                    return appropriateCtor;
+                }
             }
         }
 
@@ -177,7 +261,5 @@ namespace DependencyInjectionContainer
                 return null;
             }
         }
-
-
     }
 }
