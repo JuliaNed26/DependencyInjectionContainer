@@ -8,13 +8,13 @@ namespace DIFixture.Test_classes
 {
     internal abstract class DisposableClass : IDisposable
     {
-        protected List<Type> _disposeSequence;
+        protected DisposableRegistrator disposableRegistrator;
         public bool IsDisposed { get; protected set; }
         public void Dispose()
         {
             if (!IsDisposed)
             {
-                _disposeSequence.Add(this.GetType());
+                disposableRegistrator.SaveDisposedClassType(this.GetType());
             }
             IsDisposed = true;
         }

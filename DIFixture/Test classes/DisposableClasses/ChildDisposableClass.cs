@@ -8,10 +8,9 @@ namespace DIFixture.Test_classes
 {
     internal sealed class ChildDisposableClass : DisposableClass
     {
-        public ChildDisposableClass(List<Type> disposeSequence)
+        public ChildDisposableClass(DisposableRegistrator registrator)
         {
-            IsDisposed = false;
-            _disposeSequence = disposeSequence;
+            disposableRegistrator = registrator;
         }
     }
 }

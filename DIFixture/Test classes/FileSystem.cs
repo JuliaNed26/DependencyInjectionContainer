@@ -11,7 +11,7 @@ namespace DIFixture.Test_classes
         private IEnumerable<IUserFile> userFiles;
         private IEnumerable<IUserDirectory> userDirectories;
         IErrorLogger errorNotificator;
-        internal FileSystem(IEnumerable<IUserFile> files, IEnumerable<IUserDirectory> directories, IErrorLogger _errorNotificator)
+        public FileSystem(IEnumerable<IUserFile> files, IEnumerable<IUserDirectory> directories, IErrorLogger _errorNotificator)
         {
             userFiles = files;
             userDirectories = directories;

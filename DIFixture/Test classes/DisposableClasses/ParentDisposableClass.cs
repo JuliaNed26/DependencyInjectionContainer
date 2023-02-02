@@ -6,13 +6,12 @@ using System.Threading.Tasks;
 
 namespace DIFixture.Test_classes
 {
-    internal class ParentDisposableClass : DisposableClass
+    internal sealed class ParentDisposableClass : DisposableClass
     {
-        public ParentDisposableClass(ChildDisposableClass childClass, List<Type> disposeSequence)
+        public ParentDisposableClass(ChildDisposableClass childClass, DisposableRegistrator registrator)
         {
             Child = childClass;
-            IsDisposed = false;
-            _disposeSequence = disposeSequence;
+            disposableRegistrator = registrator;
         }
         public ChildDisposableClass Child { get; init; }
     }

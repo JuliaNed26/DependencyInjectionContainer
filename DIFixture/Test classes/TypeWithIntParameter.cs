@@ -8,9 +8,8 @@ namespace DIFixture.Test_classes
 {
     internal class TypeWithIntParameter
     {
-        public readonly string Str;
         public readonly int Num;
-        internal TypeWithIntParameter(int i) 
+        public TypeWithIntParameter(int i) 
         {
             Num = i; 
         }

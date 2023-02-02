@@ -1,14 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿namespace DependencyInjectionContainer.Enums;
 
-namespace DependencyInjectionContainer.Enums
+public enum ServiceLifetime
 {
-    public enum ServiceLifetime
-    {
-        Transient,
-        Singleton
-    }
+    Transient,
+    Singleton
 }

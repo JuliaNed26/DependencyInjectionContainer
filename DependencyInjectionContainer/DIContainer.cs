@@ -1,265 +1,228 @@
-﻿using System.Reflection;
-using System.Runtime.CompilerServices;
+﻿namespace DependencyInjectionContainer;
+using System.Reflection;
 using System.Runtime.ExceptionServices;
-using DependencyInjectionContainer.Enums;
-using DependencyInjectionContainer.Exceptions;
+using Enums;
+using Exceptions;
 
-namespace DependencyInjectionContainer
+public sealed class DIContainer : IDisposable
 {
-    public sealed class DIContainer : IDisposable
+    private ServicesInstanceList servicesInstanceList = new ServicesInstanceList();
+    private bool isDisposed;
+    private readonly IEnumerable<Service> registeredServices;
+    private DIContainer сontainerParent;
+
+    internal DIContainer(IEnumerable<Service> services, DIContainer parent)
     {
-        internal readonly IEnumerable<Service> registeredServices;
-        ServicesInstanceList servicesInstanceList;
+        registeredServices = services;
+        сontainerParent = parent;
+    }
 
-        internal DIContainer(IEnumerable<Service> services, DIContainer parent)
+    public DIContainerBuilder CreateChildContainer()
+    {
+        ThrowIfDisposed();
+        return new(this);
+    }
+
+    public TTypeToResolve Resolve<TTypeToResolve>(ResolveStrategy resolveType = ResolveStrategy.Any) where TTypeToResolve : class
+    {
+        return (TTypeToResolve)Resolve(typeof(TTypeToResolve), resolveType);
+    }
+
+    public IEnumerable<TTypeToResolve> ResolveMany<TTypeToResolve>(ResolveStrategy resolveSource = ResolveStrategy.Any) where TTypeToResolve : class
+    {
+        ThrowIfDisposed();
+
+        switch (resolveSource)
         {
-            servicesInstanceList = new ServicesInstanceList();
-            registeredServices = services;
-            ContainerParent = parent;
-            IsDisposed = false;
-        }
+            case ResolveStrategy.Any:
+                IEnumerable<TTypeToResolve> resolvedLocal = ResolveLocal(); 
+                return resolvedLocal
+                      .Concat(ResolveNonLocalImplementationTypesWhichWereNotResolved(resolvedLocal))
+                      .ToList();
 
-        public bool IsDisposed { get; private set; }
-        internal DIContainer ContainerParent { get; private set; }
+            case ResolveStrategy.Local:
+                return ResolveLocal().ToList();
 
-        public DIContainerBuilder CreateChildContainer()
-        {
-            ThrowIfDisposed();
-            return new(this);
-        }
-
-        public TTypeToResolve Resolve<TTypeToResolve>(ResolveSource resolveType = ResolveSource.Any) where TTypeToResolve : class
-        {
-            ThrowIfDisposed();
-            return (TTypeToResolve)Resolve(typeof(TTypeToResolve), resolveType);
-        }
-
-        public IEnumerable<TTypeToResolve> ResolveMany<TTypeToResolve>(ResolveSource resolveSource = ResolveSource.Any) where TTypeToResolve : class
-        {
-            ThrowIfDisposed();
-
-            switch (resolveSource)
-            {
-                case ResolveSource.Any:
-                    IEnumerable<TTypeToResolve> resolvedLocal = ResolveLocal();
-                    return resolvedLocal.Concat(ResolveNonLocalImplementationTypesWhichWereNotResolved(resolvedLocal));
-
-                case ResolveSource.Local:
-                    return ResolveLocal();
-
-                case ResolveSource.NonLocal:
+            case ResolveStrategy.NonLocal:
+                {
+                    if (!IsParentContainerExist())
                     {
-                        if (ContainerParent == null)
-                        {
-                            throw new NullReferenceException("This container does not have a parent");
-                        }
-                        return ResolveNonLocal();
+                        throw new NullReferenceException("This container does not have a parent");
                     }
-                default:
-                    throw new ArgumentException("Wrong resolve source");
-            }
-
-            IEnumerable<TTypeToResolve> ResolveLocal() =>
-                registeredServices
-                    .Where(service => service.Key == typeof(TTypeToResolve))
-                    .Select(service => (TTypeToResolve)GetOrCreateServiceImplementation_SaveIfSingleton(service, ResolveSource.Local));
-
-            IEnumerable<TTypeToResolve> ResolveNonLocal()
-                => ContainerParent != null ? ContainerParent.ResolveMany<TTypeToResolve>() : Enumerable.Empty<TTypeToResolve>();
-
-            IEnumerable<TTypeToResolve> ResolveNonLocalImplementationTypesWhichWereNotResolved(IEnumerable<TTypeToResolve> resolvedServices) =>
-                ResolveNonLocal().Where(resolved => !resolvedServices.Any(item => item.GetType() == resolved.GetType()));
+                    return ResolveNonLocal().ToList();
+                }
+            default:
+                throw new ArgumentException("Wrong resolve source");
         }
 
-        public void Dispose()
+        IEnumerable<TTypeToResolve> ResolveLocal() =>
+            registeredServices
+                .Where(service => service.Key == typeof(TTypeToResolve))
+                .Select(service => (TTypeToResolve)GetOrCreateServiceImplementation_SaveIfSingleton(service, ResolveStrategy.Local));
+
+        IEnumerable<TTypeToResolve> ResolveNonLocal()
+            => IsParentContainerExist() ? сontainerParent.ResolveMany<TTypeToResolve>() : Enumerable.Empty<TTypeToResolve>();
+
+        IEnumerable<TTypeToResolve> ResolveNonLocalImplementationTypesWhichWereNotResolved(IEnumerable<TTypeToResolve> resolvedServices) =>
+            ResolveNonLocal().Where(resolved => resolvedServices.All(item => item.GetType() != resolved.GetType()));
+    }
+
+    public void Dispose()
+    {
+        ThrowIfDisposed();
+        isDisposed = true;
+        servicesInstanceList.Dispose();
+    }
+
+    private void ThrowIfDisposed()
+    { 
+        if (isDisposed)
         {
-            if (!IsDisposed)
-            {
-                servicesInstanceList.Dispose();
-                servicesInstanceList = null;
-                ContainerParent = null;
-                GC.SuppressFinalize(this);
-                IsDisposed = true;
-            }
+            throw new InvalidOperationException("This container was disposed");
         }
+    }
 
-        private void ThrowIfDisposed()
-        { 
-            if (IsDisposed)
-            {
-                throw new NullReferenceException("This container was disposed");
-            }
-        }
+    private object Resolve(Type typeToResolve, ResolveStrategy resolveSource)
+    {
+        ThrowIfDisposed();
 
-        private object Resolve(Type typeToResolve, ResolveSource resolveSource)
+        if (typeToResolve.IsValueType)
         {
-            if (typeToResolve.IsValueType)
-            {
-                throw new ArgumentException("Can resolve only reference types");
-            }
-
-            if (typeToResolve.IsEnumerable())
-            {
-                typeToResolve = typeToResolve.GetGenericArguments()[0];
-                return InvokeGenericResolveMany(typeToResolve, this, resolveSource);
-            }
-
-            switch (resolveSource)
-            {
-                case ResolveSource.NonLocal:
-                    if (ContainerParent == null)
-                    {
-                        throw new NullReferenceException("Current container do not have parent");
-                    }
-                    return ContainerParent.Resolve(typeToResolve, ResolveSource.Any);
-
-                case ResolveSource.Any:
-                    Service foundService;
-                    if (TryGetRegistration(typeToResolve, ResolveSource.Any, out foundService))
-                    {
-                        return GetOrCreateServiceImplementation_SaveIfSingleton(foundService, resolveSource);
-                    }
-                    throw new ServiceNotFoundException(typeToResolve);
-
-                case ResolveSource.Local:
-                    if (TryGetRegistration(typeToResolve, ResolveSource.Local, out foundService))
-                    {
-                        return GetOrCreateServiceImplementation_SaveIfSingleton(foundService, resolveSource);
-                    }
-                    throw new ServiceNotFoundException(typeToResolve);
-
-                default:
-                    throw new ArgumentException("Wrong resolve source type");
-            }
+            throw new ArgumentException("Can resolve only reference types");
         }
 
-        private bool TryGetRegistration(Type typeForSearch, ResolveSource resolveSource, out Service foundService)
+        if (typeToResolve.IsEnumerable())
         {
-            List<Service> servicesImplementsType = new List<Service>();
+            typeToResolve = typeToResolve.GetGenericArguments()[0];
+            return InvokeGenericResolveMany(typeToResolve, this, resolveSource);
+        }
 
+        switch (resolveSource)
+        {
+            case ResolveStrategy.NonLocal:
+                if (!IsParentContainerExist())
+                {
+                    throw new NullReferenceException("Current container do not have parent");
+                }
+                return сontainerParent.Resolve(typeToResolve, ResolveStrategy.Any);
 
-            if(resolveSource == ResolveSource.Local)
-            {
+            case ResolveStrategy.Any:
+                if (TryGetRegistration(typeToResolve, ResolveStrategy.Any, out Service foundService))
+                {
+                    return GetOrCreateServiceImplementation_SaveIfSingleton(foundService, resolveSource);
+                }
+                throw new ServiceNotFoundException(typeToResolve);
+
+            case ResolveStrategy.Local:
+                if (TryGetRegistration(typeToResolve, ResolveStrategy.Local, out foundService))
+                {
+                    return GetOrCreateServiceImplementation_SaveIfSingleton(foundService, resolveSource);
+                }
+                throw new ServiceNotFoundException(typeToResolve);
+
+            default:
+                throw new ArgumentException("Wrong resolve source type");
+        }
+    }
+
+    private bool TryGetRegistration(Type typeForSearch, ResolveStrategy resolveSource, out Service foundService)
+    {
+        List<Service> servicesImplementsType = new List<Service>();
+
+        switch (resolveSource)
+        {
+            case ResolveStrategy.Local:
                 servicesImplementsType = registeredServices
                                          .Where(service => service.Key == typeForSearch)
                                          .ToList();
-            }
-
-            else if (resolveSource == ResolveSource.Any)
-            {
-                var curContainer = this;
-                while (curContainer != null && servicesImplementsType.Count == 0)
-                {
-                    servicesImplementsType = curContainer.registeredServices
-                                                         .Where(service => service.Key == typeForSearch)
-                                                         .ToList();
-                    curContainer = curContainer.ContainerParent;
-                }
-            }
-
-            if (servicesImplementsType.Count > 1)
-            {
-                throw new ResolveServiceException($"Many services with type {typeForSearch} was registered. Use ResolveMany to resolve them all");
-            }
-
-            foundService = servicesImplementsType.FirstOrDefault();
-            return foundService != null;
+                break;
+            case ResolveStrategy.Any:
+                servicesImplementsType = GetRegistrationIncludingParentContainer();
+                break;
+            case ResolveStrategy.NonLocal:
+                break;
+            default:
+                throw new ArgumentException("Wrong resolve source type");
         }
 
-        private object GetOrCreateServiceImplementation_SaveIfSingleton(Service service, ResolveSource resolveSource)
+        if (servicesImplementsType.Count > 1)
         {
-            if (service.Implementation != null)
-            {
-                servicesInstanceList.Add(service.Implementation);
-                return service.Implementation;
-            }
-
-            var implementation = GetCreatedImplementationForService();
-
-            if (service.Lifetime == ServiceLifetime.Singleton)
-            {
-                service.Implementation = implementation;
-                servicesInstanceList.Add(service.Implementation); 
-            }
-
-            return implementation;
-
-            object GetCreatedImplementationForService()
-            {
-                var ctor = GetAppropriateCtor();
-
-                var parameters = ctor
-                                 .GetParameters()
-                                 .Select(parameter => Resolve(parameter.ParameterType, resolveSource))
-                                 .ToArray();
-
-                var implementation = ctor.Invoke(parameters);
-                return implementation;
-
-                ConstructorInfo GetAppropriateCtor()
-                {
-                    var constructors = service.Value
-                                       .GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance)
-                                       .OrderByDescending(ctor => ctor.GetParameters().Count());
-                    //BindingFlags.Instance - gets non static members
-
-                    ConstructorInfo appropriateCtor = null;
-
-                    foreach (var constructor in constructors)
-                    {
-                        if (appropriateCtor != null &&
-                            constructor.GetParameters().Count() < appropriateCtor.GetParameters().Count())
-                        {
-                            break;
-                        }
-
-                        bool isCurAppropriate = true;
-                        foreach(var parameter in constructor.GetParameters())
-                        {
-                            Service foundService;
-                            if (!parameter.ParameterType.IsEnumerable() && !TryGetRegistration(parameter.ParameterType, resolveSource, out foundService))
-                            {
-                                isCurAppropriate = false;
-                                break;
-                            }
-                        }
-
-                        if(isCurAppropriate)
-                        {
-                            if (appropriateCtor == null)
-                            {
-                                appropriateCtor = constructor;
-                            }
-                            else
-                            {
-                                throw new ResolveServiceException("There's ambiguity when discovering constructors");
-                            }
-                        }
-                    }
-                    if(appropriateCtor == null)
-                    {
-                        throw new ResolveServiceException("Could not find appropriate constructor. Maybe you forgot to register some services or " +
-                            "constructor contains value parameter.");
-                    }
-                    return appropriateCtor;
-                }
-            }
+            throw new ResolveServiceException($"Many services with type {typeForSearch} was registered. Use ResolveMany to resolve them all");
         }
 
-        private static object InvokeGenericResolveMany(Type typeToResolve, object invokeFrom, ResolveSource resolveSource)
+        foundService = servicesImplementsType.SingleOrDefault();
+        return IsServiceFound();
+
+        List<Service> GetRegistrationIncludingParentContainer()
         {
-            try
+            var curContainer = this;
+            List<Service> found = new List<Service>();
+            while (curContainer != null && found.Count == 0)
             {
-                return typeof(DIContainer)
-                       .GetMethod(nameof(ResolveMany))
-                       .MakeGenericMethod(typeToResolve)
-                       .Invoke(invokeFrom, new object[] { resolveSource });
+                found = curContainer.registeredServices
+                    .Where(service => service.Key == typeForSearch)
+                    .ToList();
+                curContainer = curContainer.сontainerParent;
             }
-            catch (TargetInvocationException ex)
+            return found;
+        }
+
+        bool IsServiceFound() => servicesImplementsType.Count() == 1;
+    }
+
+    private object GetOrCreateServiceImplementation_SaveIfSingleton(Service service, ResolveStrategy resolveSource)
+    {
+        if (service.InstanceCreated())
+        {
+            return service.Instance;
+        }
+
+        var implementation = GetCreatedImplementationForService();
+
+        if (service.Lifetime == ServiceLifetime.Singleton)
+        {
+            service.Instance = implementation;
+            servicesInstanceList.Add(service.Instance); 
+        }
+
+        return implementation;
+
+        object GetCreatedImplementationForService()
+        {
+            if (service.ImplementationFactoryDefined())
             {
-                ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
-                return null;
+                return service.ImplementationFactory(this);
             }
+
+            var ctor = service.Value
+                                            .GetConstructors(BindingFlags.Public | BindingFlags.Instance)
+                                            .SingleOrDefault();
+
+            var parameters = ctor
+                                     .GetParameters()
+                                     .Select(parameter => Resolve(parameter.ParameterType, resolveSource))
+                                     .ToArray();
+
+            var createdImplementation = ctor.Invoke(parameters);
+            return createdImplementation;
         }
     }
+
+    private static object InvokeGenericResolveMany(Type typeToResolve, object invokeFrom, ResolveStrategy resolveSource)
+    {
+        try
+        {
+            return typeof(DIContainer)
+                   .GetMethod(nameof(ResolveMany))
+                   .MakeGenericMethod(typeToResolve)
+                   .Invoke(invokeFrom, new object[] { resolveSource });
+        }
+        catch (TargetInvocationException ex)
+        {
+            ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
+            return null;
+        }
+    }
+
+    private bool IsParentContainerExist() => сontainerParent != null;
 }

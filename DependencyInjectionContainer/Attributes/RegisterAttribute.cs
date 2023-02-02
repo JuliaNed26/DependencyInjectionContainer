@@ -1,21 +1,18 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using DependencyInjectionContainer.Enums;
+﻿namespace DependencyInjectionContainer.Attributes;
+using System;
+using Enums;
 
-namespace DependencyInjectionContainer.Attributes
+[AttributeUsage(AttributeTargets.Class, Inherited = false)]
+public sealed class RegisterAttribute : Attribute
 {
-    [AttributeUsage(AttributeTargets.Class, Inherited = false)]
-    public sealed class RegisterAttribute : Attribute
+    public RegisterAttribute(ServiceLifetime lifetime, Type interfaceType = null)
     {
-        public Type InterfaceType { get; private set; }
-        public ServiceLifetime Lifetime { get; private set; }
-        public RegisterAttribute(ServiceLifetime lifetime, Type interfaceType = null)
-        {
-            InterfaceType = interfaceType;
-            Lifetime = lifetime;
-        }
+        IsRegisteredByInterface = interfaceType == null;
+        InterfaceType = interfaceType;
+        Lifetime = lifetime;
     }
+
+    public bool IsRegisteredByInterface { get; init; }
+    public Type InterfaceType { get;}
+    public ServiceLifetime Lifetime { get;}
 }
