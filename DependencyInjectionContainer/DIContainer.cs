@@ -6,13 +6,13 @@ using Exceptions;
 
 public sealed class DIContainer : IDisposable
 {
-    private ServicesInstanceList servicesInstanceList = new ServicesInstanceList();
     private bool isDisposed;
     private readonly IEnumerable<Service> registeredServices;
     private DIContainer сontainerParent;
 
     internal DIContainer(IEnumerable<Service> services, DIContainer parent)
     {
+        ServicesDisposer = new ServicesDisposer();
         registeredServices = services;
         сontainerParent = parent;
     }
@@ -22,6 +22,8 @@ public sealed class DIContainer : IDisposable
         ThrowIfDisposed();
         return new(this);
     }
+
+    internal ServicesDisposer ServicesDisposer { get; }
 
     public TTypeToResolve Resolve<TTypeToResolve>(ResolveStrategy resolveType = ResolveStrategy.Any) where TTypeToResolve : class
     {
@@ -58,7 +60,7 @@ public sealed class DIContainer : IDisposable
         IEnumerable<TTypeToResolve> ResolveLocal() =>
             registeredServices
                 .Where(service => service.Key == typeof(TTypeToResolve))
-                .Select(service => (TTypeToResolve)GetOrCreateServiceImplementation_SaveIfSingleton(service, ResolveStrategy.Local));
+                .Select(service => (TTypeToResolve)service.GetOrCreateImplementation_SaveIfSingleton(this, ResolveStrategy.Local));
 
         IEnumerable<TTypeToResolve> ResolveNonLocal()
             => IsParentContainerExist() ? сontainerParent.ResolveMany<TTypeToResolve>() : Enumerable.Empty<TTypeToResolve>();
@@ -71,18 +73,10 @@ public sealed class DIContainer : IDisposable
     {
         ThrowIfDisposed();
         isDisposed = true;
-        servicesInstanceList.Dispose();
+        ServicesDisposer.Dispose();
     }
-
-    private void ThrowIfDisposed()
-    { 
-        if (isDisposed)
-        {
-            throw new InvalidOperationException("This container was disposed");
-        }
-    }
-
-    private object Resolve(Type typeToResolve, ResolveStrategy resolveSource)
+    
+    internal object Resolve(Type typeToResolve, ResolveStrategy resolveSource)
     {
         ThrowIfDisposed();
 
@@ -109,19 +103,27 @@ public sealed class DIContainer : IDisposable
             case ResolveStrategy.Any:
                 if (TryGetRegistration(typeToResolve, ResolveStrategy.Any, out Service foundService))
                 {
-                    return GetOrCreateServiceImplementation_SaveIfSingleton(foundService, resolveSource);
+                    return foundService.GetOrCreateImplementation_SaveIfSingleton(this, resolveSource);
                 }
                 throw new ServiceNotFoundException(typeToResolve);
 
             case ResolveStrategy.Local:
                 if (TryGetRegistration(typeToResolve, ResolveStrategy.Local, out foundService))
                 {
-                    return GetOrCreateServiceImplementation_SaveIfSingleton(foundService, resolveSource);
+                    return foundService.GetOrCreateImplementation_SaveIfSingleton(this, resolveSource);
                 }
                 throw new ServiceNotFoundException(typeToResolve);
 
             default:
                 throw new ArgumentException("Wrong resolve source type");
+        }
+    }
+
+    private void ThrowIfDisposed()
+    { 
+        if (isDisposed)
+        {
+            throw new InvalidOperationException("This container was disposed");
         }
     }
 
@@ -137,7 +139,7 @@ public sealed class DIContainer : IDisposable
                                          .ToList();
                 break;
             case ResolveStrategy.Any:
-                servicesImplementsType = GetRegistrationIncludingParentContainer();
+                servicesImplementsType = TakeFirstRegistered();
                 break;
             case ResolveStrategy.NonLocal:
                 break;
@@ -153,7 +155,7 @@ public sealed class DIContainer : IDisposable
         foundService = servicesImplementsType.SingleOrDefault();
         return IsServiceFound();
 
-        List<Service> GetRegistrationIncludingParentContainer()
+        List<Service> TakeFirstRegistered()
         {
             var curContainer = this;
             List<Service> found = new List<Service>();
@@ -168,44 +170,6 @@ public sealed class DIContainer : IDisposable
         }
 
         bool IsServiceFound() => servicesImplementsType.Count() == 1;
-    }
-
-    private object GetOrCreateServiceImplementation_SaveIfSingleton(Service service, ResolveStrategy resolveSource)
-    {
-        if (service.InstanceCreated())
-        {
-            return service.Instance;
-        }
-
-        var implementation = GetCreatedImplementationForService();
-
-        if (service.Lifetime == ServiceLifetime.Singleton)
-        {
-            service.Instance = implementation;
-            servicesInstanceList.Add(service.Instance); 
-        }
-
-        return implementation;
-
-        object GetCreatedImplementationForService()
-        {
-            if (service.ImplementationFactoryDefined())
-            {
-                return service.ImplementationFactory(this);
-            }
-
-            var ctor = service.Value
-                                            .GetConstructors(BindingFlags.Public | BindingFlags.Instance)
-                                            .SingleOrDefault();
-
-            var parameters = ctor
-                                     .GetParameters()
-                                     .Select(parameter => Resolve(parameter.ParameterType, resolveSource))
-                                     .ToArray();
-
-            var createdImplementation = ctor.Invoke(parameters);
-            return createdImplementation;
-        }
     }
 
     private static object InvokeGenericResolveMany(Type typeToResolve, object invokeFrom, ResolveStrategy resolveSource)

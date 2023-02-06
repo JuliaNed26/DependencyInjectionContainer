@@ -1,6 +1,6 @@
 ﻿namespace DIFixture;
 using DependencyInjectionContainer;
-using DIFixture.Test_classes;
+using Test_classes;
 using DependencyInjectionContainer.Exceptions;
 using DependencyInjectionContainer.Enums;
 
@@ -36,10 +36,8 @@ public class DependencyInjectionFixture
     {
         IErrorLogger logger = new FileLogger();
         builder.RegisterWithImplementation(logger, ServiceLifetime.Singleton);
-        using (var container = builder.Build())
-        {
-            Assert.That((IErrorLogger)container.Resolve<FileLogger>(), Is.EqualTo(logger));
-        }
+        using var container = builder.Build();
+        Assert.That((IErrorLogger)container.Resolve<FileLogger>(), Is.EqualTo(logger));
     }
 
     [Test]
@@ -47,28 +45,24 @@ public class DependencyInjectionFixture
     {
         IErrorLogger logger = new FileLogger();
         builder.RegisterWithImplementation(logger, ServiceLifetime.Singleton);
-        using (var container = builder.Build())
-        {
-            Assert.Throws<ServiceNotFoundException>(() => container.Resolve<IErrorLogger>());
-        }
+        using var container = builder.Build();
+        Assert.Throws<ServiceNotFoundException>(() => container.Resolve<IErrorLogger>());
     }
 
     [Test]
     public void DIContainerBuilderRegister_RegisterAfterBuild_ShouldThrowRegistrationServiceException()
     {
         builder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Transient);
-        using (var container = builder.Build())
-        {
-            Assert.Throws<RegistrationServiceException>(() => builder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton));
-            Assert.Throws<RegistrationServiceException>(() => builder.Register<ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton));
-            Assert.Throws<RegistrationServiceException>(() => builder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Transient));
-            var obj = new ConsoleLoggerWithAttribute();
-            Assert.Throws<RegistrationServiceException>(() => builder.RegisterWithImplementation(obj, ServiceLifetime.Singleton));
-        }
+        using var container = builder.Build();
+        Assert.Throws<RegistrationServiceException>(() => builder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton));
+        Assert.Throws<RegistrationServiceException>(() => builder.Register<ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton));
+        Assert.Throws<RegistrationServiceException>(() => builder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Transient));
+        var obj = new ConsoleLoggerWithAttribute();
+        Assert.Throws<RegistrationServiceException>(() => builder.RegisterWithImplementation(obj, ServiceLifetime.Singleton));
     }
 
     [Test]
-    public void DIContainerBuilderRegister_RegisterTypeWithManyCtorsNotDefineWhichToUse_ShouldThrowRegistrationServiceException()
+    public void DIContainerBuilderRegister_RegisterTypeWithManyConstructorsNotDefineWhichToUse_ShouldThrowRegistrationServiceException()
     {
         Assert.Throws<RegistrationServiceException>( () => builder.Register<ClassWithManyConstructors>(ServiceLifetime.Singleton));
     }
@@ -77,97 +71,86 @@ public class DependencyInjectionFixture
     public void DIContainerBuilderBuild_TheSecondBuild_ShouldThrowInvalidOperationException()
     {
         builder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Transient);
-        using (var container = builder.Build())
-        {
-            Assert.Throws<InvalidOperationException>(() => builder.Build());
-        }
+        using var container = builder.Build();
+        Assert.Throws<InvalidOperationException>(() => builder.Build());
     }
 
     [Test]
     public void DIContainerBuilderRegisterByAssembly_ShouldGetOnlyTypesWithRegisterAttributeWhenResolve()
     {
         builder.RegisterAssemblyByAttributes(typeof(FileLogger).Assembly);
-        using (var container = builder.Build())
-        {
-            Assert.That(container.Resolve<IErrorLogger>().GetType(), Is.EqualTo(typeof(ConsoleLoggerWithAttribute)));
-            Assert.That(container.Resolve<IUserDirectory>().GetType(), Is.EqualTo(typeof(PublicDirectoryWithAttribute)));
-            Assert.Throws<ServiceNotFoundException>(() => container.Resolve<IUserFile>());
-        }
+        using var container = builder.Build();
+        Assert.That(container.Resolve<IErrorLogger>().GetType(), Is.EqualTo(typeof(ConsoleLoggerWithAttribute)));
+        Assert.That(container.Resolve<IUserDirectory>().GetType(), Is.EqualTo(typeof(PublicDirectoryWithAttribute)));
+        Assert.Throws<ServiceNotFoundException>(() => container.Resolve<IUserFile>());
     }
 
     [Test]
     public void DIContainerBuilderRegister_RegisterTypeAsSingleton_ReturnsTheSameObjectForEveryResolve()
     {
         builder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
-        using (var container = builder.Build())
-        {
-            var obj1 = container.Resolve<IErrorLogger>();
-            var obj2 = container.Resolve<IErrorLogger>();
-            Assert.IsTrue(ReferenceEquals(obj1, obj2));
-        }
+        using var container = builder.Build();
+        var obj1 = container.Resolve<IErrorLogger>();
+        var obj2 = container.Resolve<IErrorLogger>();
+        Assert.IsTrue(ReferenceEquals(obj1, obj2));
     }
 
     [Test]
     public void DIContainerBuilderRegister_RegisterTypeAsTransient_ReturnsNewObjectForEveryResolve()
     {
         builder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Transient);
-        using (var container = builder.Build())
-        {
-            var obj1 = container.Resolve<IErrorLogger>();
-            var obj2 = container.Resolve<IErrorLogger>();
-            Assert.IsFalse(ReferenceEquals(obj1, obj2));
-        }
+        using var container = builder.Build();
+        var obj1 = container.Resolve<IErrorLogger>();
+        var obj2 = container.Resolve<IErrorLogger>();
+        Assert.IsFalse(ReferenceEquals(obj1, obj2));
     }
 
     [Test]
     public void DIContainerBuilderRegister_RegisterImplementationTypeInAChildContainerWhenItExistsInParent_ShouldOverrideParentsRegistration()
     {
         builder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
-        using (var container = builder.Build())
-        {
-            var childBuilder = container.CreateChildContainer();
-            childBuilder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Transient);
-            using (var childContainer = childBuilder.Build())
-            {
-                Assert.IsFalse(ReferenceEquals(container.Resolve<IErrorLogger>(), childContainer.Resolve<IErrorLogger>()));
-            }
-        }
+        using var container = builder.Build();
+        var childBuilder = container.CreateChildContainer();
+        childBuilder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Transient);
+        using var childContainer = childBuilder.Build();
+        Assert.IsFalse(ReferenceEquals(container.Resolve<IErrorLogger>(), childContainer.Resolve<IErrorLogger>()));
     }
 
-    [Test] public void DIContainerResolve_ResolveServiceWithManyCtorsWhereImplementationFactoryWasDefined_ShouldResolveByFactory()
+    [Test] public void DIContainerResolve_ResolveServiceWithManyConstructorWhereImplementationFactoryWasDefined_ShouldResolveByFactory()
     {
         builder.Register<ClassWithManyConstructors>(ServiceLifetime.Transient, 
                                           container => new ClassWithManyConstructors());
         using (var container = builder.Build())
         {
             var resolved = container.Resolve<ClassWithManyConstructors>();
-            Assert.That(resolved.CtorUsed, Is.EqualTo("Parameterless"));
+            Assert.That(resolved.ConstructorUsed, Is.EqualTo("Parameterless"));
 
             var child1Builder = container.CreateChildContainer();
+            child1Builder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Transient);
             child1Builder.Register<ClassWithManyConstructors>(ServiceLifetime.Transient,
                 container =>
                 {
                     var logger = container.Resolve<IErrorLogger>();
                     return new ClassWithManyConstructors(logger);
                 });
-            child1Builder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Transient);
             using(var childContainer = child1Builder.Build())
             {
                 var resolvedFromChild = childContainer.Resolve<ClassWithManyConstructors>();
-                Assert.That(resolvedFromChild.CtorUsed, Is.EqualTo("With IErrorLogger"));
+                Assert.That(resolvedFromChild.ConstructorUsed, Is.EqualTo("With IErrorLogger"));
             }
+
             var child2Builder = container.CreateChildContainer();
+            child2Builder.Register<IUserDirectory, PublicDirectoryWithAttribute>(ServiceLifetime.Transient);
             child2Builder.Register<ClassWithManyConstructors>(ServiceLifetime.Transient,
                 container =>
                 {
                     var directory = container.Resolve<IUserDirectory>();
                     return new ClassWithManyConstructors(directory);
                 });
-            child2Builder.Register<IUserDirectory, PublicDirectoryWithAttribute>(ServiceLifetime.Transient);
             using (var childContainer = child2Builder.Build())
             {
                 var resolvedFromChild = childContainer.Resolve<ClassWithManyConstructors>();
-                Assert.That(resolvedFromChild.CtorUsed, Is.EqualTo("With IUserDirectory"));
+                Assert.That(resolvedFromChild.ConstructorUsed, Is.EqualTo("With IUserDirectory"));
             }
         }
 
@@ -177,10 +160,8 @@ public class DependencyInjectionFixture
     public void DIContainerResolve_ServiceRegisteredByInterfaceResolveByImplementationType_ShouldThrowServiceNotFoundException()
     {
         builder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton);
-        using (var container = builder.Build())
-        {
-            Assert.Throws<ServiceNotFoundException>(() => container.Resolve<ConsoleLoggerWithAttribute>());
-        }
+        using var container = builder.Build();
+        Assert.Throws<ServiceNotFoundException>(() => container.Resolve<ConsoleLoggerWithAttribute>());
     }
 
     [Test]
@@ -192,21 +173,17 @@ public class DependencyInjectionFixture
         builder.Register<IUserFile, SystemFile>(ServiceLifetime.Transient);
         builder.Register<IUserFile, UserFile>(ServiceLifetime.Transient);
         builder.Register<FileSystem>(ServiceLifetime.Singleton);
-        using (var container = builder.Build())
-        {
-            Assert.That(container.Resolve<FileSystem>().GetType(), Is.EqualTo(typeof(FileSystem)));
-        }
+        using var container = builder.Build();
+        Assert.That(container.Resolve<FileSystem>().GetType(), Is.EqualTo(typeof(FileSystem)));
     }
 
     [Test]
-    public void DIContainerResolve_NotAllCtorParametersWasRegistered_ShouldThrowServiceNotFoundException()
+    public void DIContainerResolve_NotAllConstructorParametersWasRegistered_ShouldThrowServiceNotFoundException()
     {
         builder.Register<IUserDirectory, HiddenDirectory>(ServiceLifetime.Transient);
         builder.Register<FileSystem>(ServiceLifetime.Singleton);
-        using (var container = builder.Build())
-        {
-            Assert.Throws<ServiceNotFoundException>(() => container.Resolve<FileSystem>());
-        }
+        using var container = builder.Build();
+        Assert.Throws<ServiceNotFoundException>(() => container.Resolve<FileSystem>());
     }
 
     [Test]
@@ -214,13 +191,11 @@ public class DependencyInjectionFixture
     {
         builder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton);
         builder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
-        using (var container = builder.Build())
-        {
-            var resolved = container.Resolve<IEnumerable<IErrorLogger>>();
-            Assert.That(resolved.Count(), Is.EqualTo(2));
-            Assert.That(resolved.Where(logger => logger.GetType() == typeof(ConsoleLoggerWithAttribute)).Count(), Is.EqualTo(1));
-            Assert.That(resolved.Where(logger => logger.GetType() == typeof(FileLogger)).Count(), Is.EqualTo(1));
-        }
+        using var container = builder.Build();
+        var resolved = container.Resolve<IEnumerable<IErrorLogger>>();
+        Assert.That(resolved.Count(), Is.EqualTo(2));
+        Assert.That(resolved.Where(logger => logger is ConsoleLoggerWithAttribute).Count(), Is.EqualTo(1));
+        Assert.That(resolved.Where(logger => logger is FileLogger).Count(), Is.EqualTo(1));
     }
 
     [Test]
@@ -228,24 +203,20 @@ public class DependencyInjectionFixture
     {
         builder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton);
         builder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
-        using (var container = builder.Build())
-        {
-            Assert.Throws<ServiceNotFoundException>(() => container.Resolve<List<IErrorLogger>>());
-        }
+        using var container = builder.Build();
+        Assert.Throws<ServiceNotFoundException>(() => container.Resolve<List<IErrorLogger>>());
     }
 
     [Test]
-    public void DIContainerResolve_HasManyServicesThatImplementCtorsParameterInterface_ShouldThrowResolveServiceException()
+    public void DIContainerResolve_HasManyServicesThatImplementConstructorParameterInterface_ShouldThrowResolveServiceException()
     {
         builder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton);
         builder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
         builder.Register<IUserDirectory, PublicDirectoryWithAttribute>(ServiceLifetime.Transient);
         builder.Register<IUserFile, UserFile>(ServiceLifetime.Transient);
         builder.Register<FileSystem>(ServiceLifetime.Singleton);
-        using (var container = builder.Build())
-        {
-            Assert.Throws<ResolveServiceException>(() => container.Resolve<FileSystem>());
-        }
+        using var container = builder.Build();
+        Assert.Throws<ResolveServiceException>(() => container.Resolve<FileSystem>());
     }
 
     [Test]
@@ -253,144 +224,106 @@ public class DependencyInjectionFixture
     {
         builder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton);
         builder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
-        using (var container = builder.Build())
-        {
-            Assert.Throws<ResolveServiceException>(() => container.Resolve<IErrorLogger>());
-        }
+        using var container = builder.Build();
+        Assert.Throws<ResolveServiceException>(() => container.Resolve<IErrorLogger>());
     }
 
     [Test]
     public void DIContainerResolve_Local_ShouldGetTypeOnlyFromACurrentContainer()
     {
         builder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton);
-        using (var parentContainer = builder.Build())
-        {
-            var childBuilder = parentContainer.CreateChildContainer();
-            childBuilder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
-            using (var childContainer = childBuilder.Build())
-            {
-                Assert.That(childContainer.Resolve<IErrorLogger>(ResolveStrategy.Local).GetType(), Is.EqualTo(typeof(FileLogger)));
-            }
-        }
+        using var parentContainer = builder.Build();
+        var childBuilder = parentContainer.CreateChildContainer();
+        childBuilder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
+        using var childContainer = childBuilder.Build();
+        Assert.That(childContainer.Resolve<IErrorLogger>(ResolveStrategy.Local).GetType(), Is.EqualTo(typeof(FileLogger)));
     }
 
     [Test]
     public void DIContainerResolve_LocalWhenNotRegisteredInСurrentContainerButRegisteredInParent_ShouldThrowServiceNotFoundException()
     {
         builder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton);
-        using (var parentContainer = builder.Build())
-        {
-            using (var childContainer = parentContainer.CreateChildContainer().Build())
-            {
-                Assert.Throws<ServiceNotFoundException>(() => childContainer.Resolve<IErrorLogger>(ResolveStrategy.Local));
-            }
-        }
+        using var parentContainer = builder.Build();
+        using var childContainer = parentContainer.CreateChildContainer().Build();
+        Assert.Throws<ServiceNotFoundException>(() => childContainer.Resolve<IErrorLogger>(ResolveStrategy.Local));
     }
 
     [Test]
     public void DIContainerResolve_NonLocal_ShouldGetTypeOnlyFromAParentContainers()
     {
         builder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton);
-        using (var parentContainer = builder.Build())
-        {
-            var childBuilder = parentContainer.CreateChildContainer();
-            childBuilder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
-            using (var childContainer = childBuilder.Build())
-            {
-                Assert.That(childContainer.Resolve<IErrorLogger>(ResolveStrategy.NonLocal).GetType(), Is.EqualTo(typeof(ConsoleLoggerWithAttribute)));
-            }
-        }
+        using var parentContainer = builder.Build();
+        var childBuilder = parentContainer.CreateChildContainer();
+        childBuilder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
+        using var childContainer = childBuilder.Build();
+        Assert.That(childContainer.Resolve<IErrorLogger>(ResolveStrategy.NonLocal).GetType(), Is.EqualTo(typeof(ConsoleLoggerWithAttribute)));
     }
 
     [Test]
     public void DIContainerResolve_NonLocalWhenNotRegisteredInParentButRegisteredInCurrentContainer_ShouldThrowServiceNotFoundException()
     {
-        using (var parentContainer = builder.Build())
-        {
-            var childBuilder = parentContainer.CreateChildContainer();
-            childBuilder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton);
-            using (var childContainer = childBuilder.Build())
-            {
-                Assert.Throws<ServiceNotFoundException>(() => childContainer.Resolve<IErrorLogger>(ResolveStrategy.NonLocal));
-            }
-        }
+        using var parentContainer = builder.Build();
+        var childBuilder = parentContainer.CreateChildContainer();
+        childBuilder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton);
+        using var childContainer = childBuilder.Build();
+        Assert.Throws<ServiceNotFoundException>(() => childContainer.Resolve<IErrorLogger>(ResolveStrategy.NonLocal));
     }
 
     [Test]
     public void DIContainerResolve_NonLocalWhenDontHaveThisTypeInParentButHaveInAParentOfParent_ShouldGetFromParentOfParent()
     {
         builder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton);
-        using (var grandParentContainer = builder.Build())
-        {
-            using (var parentContainer = grandParentContainer.CreateChildContainer().Build())
-            {
-                var childBuilder = parentContainer.CreateChildContainer();
-                childBuilder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
-                using (var childContainer = childBuilder.Build())
-                {
-                    Assert.That(childContainer.Resolve<IErrorLogger>(ResolveStrategy.NonLocal).GetType(), Is.EqualTo(typeof(ConsoleLoggerWithAttribute)));
-                }
-            }
-        }
+        using var grandParentContainer = builder.Build();
+        using var parentContainer = grandParentContainer.CreateChildContainer().Build();
+        var childBuilder = parentContainer.CreateChildContainer();
+        childBuilder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
+        using var childContainer = childBuilder.Build();
+        Assert.That(childContainer.Resolve<IErrorLogger>(ResolveStrategy.NonLocal).GetType(), Is.EqualTo(typeof(ConsoleLoggerWithAttribute)));
     }
 
     [Test]
     public void DIContainerResolve_NonLocalWhenContainerDoNotHaveParent_ShouldThrowNullRefException()
     {
         builder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton);
-        using (var container = builder.Build())
-        {
-            Assert.Throws<NullReferenceException>(() => container.Resolve<IErrorLogger>(ResolveStrategy.NonLocal));
-        }
+        using var container = builder.Build();
+        Assert.Throws<NullReferenceException>(() => container.Resolve<IErrorLogger>(ResolveStrategy.NonLocal));
     }
 
     [Test]
     public void DIContainerResolve_AnyWhenTypeExistsInCurrentContainerAndInParent_GetFromCurrent()
     {
         builder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton);
-        using (var parentContainer = builder.Build())
-        {
-            var childBuilder = parentContainer.CreateChildContainer();
-            childBuilder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
-            using (var childContainer = childBuilder.Build())
-            {
-                Assert.That(childContainer.Resolve<IErrorLogger>(ResolveStrategy.Any).GetType(), Is.EqualTo(typeof(FileLogger)));
-            }
-        }
+        using var parentContainer = builder.Build();
+        var childBuilder = parentContainer.CreateChildContainer();
+        childBuilder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
+        using var childContainer = childBuilder.Build();
+        Assert.That(childContainer.Resolve<IErrorLogger>(ResolveStrategy.Any).GetType(), Is.EqualTo(typeof(FileLogger)));
     }
 
     [Test]
     public void DIContainerResolve_AnyWhenTypeExistsInParentButNotInCurrentContainer_GetFromParent()
     {
         builder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton);
-        using (var parentContainer = builder.Build())
-        {
-            using (var childContainer = parentContainer.CreateChildContainer().Build())
-            {
-                Assert.That(childContainer.Resolve<IErrorLogger>(ResolveStrategy.Any).GetType(), Is.EqualTo(typeof(ConsoleLoggerWithAttribute)));
-            }
-        }
+        using var parentContainer = builder.Build();
+        using var childContainer = parentContainer.CreateChildContainer().Build();
+        Assert.That(childContainer.Resolve<IErrorLogger>(ResolveStrategy.Any).GetType(), Is.EqualTo(typeof(ConsoleLoggerWithAttribute)));
     }
 
     [Test]
-    public void DIContainerResolve_TypeWithValueTypeParameterInCtor_ShouldThrowArgumentException()
+    public void DIContainerResolve_TypeWithValueTypeParameterInConstructor_ShouldThrowArgumentException()
     {
         builder.Register<TypeWithIntParameter>(ServiceLifetime.Singleton);
-        using (var container = builder.Build())
-        {
-            Assert.Throws<ArgumentException>(() => container.Resolve<TypeWithIntParameter>());
-        }
+        using var container = builder.Build();
+        Assert.Throws<ArgumentException>(() => container.Resolve<TypeWithIntParameter>());
     }
 
     [Test]
-    public void DIContainerResolve_TypeWithValueTypeParameterInCtorRegisteredByImplementation_ShouldBeResolved()
+    public void DIContainerResolve_TypeWithValueTypeParameterInConstructorRegisteredByImplementation_ShouldBeResolved()
     {
         TypeWithIntParameter typeWithIntParameter = new TypeWithIntParameter(3);
         builder.RegisterWithImplementation(typeWithIntParameter, ServiceLifetime.Singleton);
-        using (var container = builder.Build())
-        {
-            Assert.IsTrue(ReferenceEquals(typeWithIntParameter, container.Resolve<TypeWithIntParameter>()));
-        }
+        using var container = builder.Build();
+        Assert.IsTrue(ReferenceEquals(typeWithIntParameter, container.Resolve<TypeWithIntParameter>()));
     }
 
     [Test]
@@ -398,30 +331,24 @@ public class DependencyInjectionFixture
     {
         builder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton);
         builder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
-        using (var container = builder.Build())
-        {
-            var resolved = container.ResolveMany<IErrorLogger>();
-            Assert.That(resolved.Count(), Is.EqualTo(2));
-            Assert.That(resolved.Where(logger => logger.GetType() == typeof(ConsoleLoggerWithAttribute)).Count(), Is.EqualTo(1));
-            Assert.That(resolved.Where(logger => logger.GetType() == typeof(FileLogger)).Count(), Is.EqualTo(1));
-        }
+        using var container = builder.Build();
+        var resolved = container.ResolveMany<IErrorLogger>();
+        Assert.That(resolved.Count(), Is.EqualTo(2));
+        Assert.That(resolved.Where(logger => logger is ConsoleLoggerWithAttribute).Count(), Is.EqualTo(1));
+        Assert.That(resolved.Where(logger => logger is FileLogger).Count(), Is.EqualTo(1));
     }
 
     [Test]
     public void DIContainerResolveMany_Local_ShouldGetTypesOnlyFromACurrentContainer()
     {
         builder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton);
-        using (var parentContainer = builder.Build())
-        {
-            var childBuilder = parentContainer.CreateChildContainer();
-            childBuilder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
-            using (var childContainer = childBuilder.Build())
-            {
-                var resolved = childContainer.ResolveMany<IErrorLogger>(ResolveStrategy.Local);
-                Assert.That(resolved.Count(), Is.EqualTo(1));
-                Assert.That(resolved.ElementAt(0).GetType(), Is.EqualTo(typeof(FileLogger)));
-            }
-        }
+        using var parentContainer = builder.Build();
+        var childBuilder = parentContainer.CreateChildContainer();
+        childBuilder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
+        using var childContainer = childBuilder.Build();
+        var resolved = childContainer.ResolveMany<IErrorLogger>(ResolveStrategy.Local);
+        Assert.That(resolved.Count(), Is.EqualTo(1));
+        Assert.That(resolved.ElementAt(0).GetType(), Is.EqualTo(typeof(FileLogger)));
     }
 
     [Test]
@@ -429,45 +356,33 @@ public class DependencyInjectionFixture
     {
         builder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton);
         builder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
-        using (var parentContainer = builder.Build())
-        {
-            using (var childContainer = parentContainer.CreateChildContainer().Build())
-            {
-                Assert.That(childContainer.ResolveMany<IErrorLogger>(ResolveStrategy.Local).Count(), Is.EqualTo(0));
-            }
-        }
+        using var parentContainer = builder.Build();
+        using var childContainer = parentContainer.CreateChildContainer().Build();
+        Assert.That(childContainer.ResolveMany<IErrorLogger>(ResolveStrategy.Local).Count(), Is.EqualTo(0));
     }
 
     [Test]
     public void DIContainerResolveMany_NonLocal_ShouldGetTypesOnlyFromAParentContainer()
     {
         builder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton);
-        using (var parentContainer = builder.Build())
-        {
-            var childBuilder = parentContainer.CreateChildContainer();
-            childBuilder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
-            using (var childContainer = childBuilder.Build())
-            {
-                var resolved = childContainer.ResolveMany<IErrorLogger>(ResolveStrategy.NonLocal);
-                Assert.That(resolved.Count(), Is.EqualTo(1));
-                Assert.That(resolved.ElementAt(0).GetType(), Is.EqualTo(typeof(ConsoleLoggerWithAttribute)));
-            }
-        }
+        using var parentContainer = builder.Build();
+        var childBuilder = parentContainer.CreateChildContainer();
+        childBuilder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
+        using var childContainer = childBuilder.Build();
+        var resolved = childContainer.ResolveMany<IErrorLogger>(ResolveStrategy.NonLocal);
+        Assert.That(resolved.Count(), Is.EqualTo(1));
+        Assert.That(resolved.ElementAt(0).GetType(), Is.EqualTo(typeof(ConsoleLoggerWithAttribute)));
     }
 
     [Test]
     public void DIContainerResolveMany_NonLocalWhenNotRegisteredInParentButRegisteredInCurrentContainer_ShouldReturnEmptyIEnumerable()
     {
-        using (var parentContainer = builder.Build())
-        {
-            var childBuilder = parentContainer.CreateChildContainer();
-            childBuilder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton);
-            childBuilder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
-            using (var childContainer = childBuilder.Build())
-            {
-                Assert.That(childContainer.ResolveMany<IErrorLogger>(ResolveStrategy.NonLocal).Count(), Is.EqualTo(0));
-            }
-        }
+        using var parentContainer = builder.Build();
+        var childBuilder = parentContainer.CreateChildContainer();
+        childBuilder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton);
+        childBuilder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
+        using var childContainer = childBuilder.Build();
+        Assert.That(childContainer.ResolveMany<IErrorLogger>(ResolveStrategy.NonLocal).Count(), Is.EqualTo(0));
     }
 
     [Test]
@@ -475,45 +390,36 @@ public class DependencyInjectionFixture
     {
         builder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton);
         builder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
-        using (var container = builder.Build())
-        {
-            Assert.Throws<NullReferenceException>(() => container.ResolveMany<IErrorLogger>(ResolveStrategy.NonLocal));
-        }
+        using var container = builder.Build();
+        Assert.Throws<NullReferenceException>(() => container.ResolveMany<IErrorLogger>(ResolveStrategy.NonLocal));
     }
 
     [Test]
     public void DIContainerResolveMany_AnyWhenTypeImplementsInterfaceExistsInCurrentContainerAndInParent_GetFromBoth()
     {
         builder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton);
-        using (var parentContainer = builder.Build())
-        {
-            var childBuilder = parentContainer.CreateChildContainer();
-            childBuilder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
-            using (var childContainer = childBuilder.Build())
-            {
-                var resolved = childContainer.ResolveMany<IErrorLogger>(ResolveStrategy.Any);
-                Assert.That(resolved.Count(), Is.EqualTo(2));
-                Assert.That(resolved.Where(logger => logger.GetType() == typeof(ConsoleLoggerWithAttribute)).Count(), Is.EqualTo(1));
-                Assert.That(resolved.Where(logger => logger.GetType() == typeof(FileLogger)).Count(), Is.EqualTo(1));
-            }
-        }
+        using var parentContainer = builder.Build();
+        var childBuilder = parentContainer.CreateChildContainer();
+        childBuilder.Register<IErrorLogger, FileLogger>(ServiceLifetime.Singleton);
+        using var childContainer = childBuilder.Build();
+        var resolved = childContainer.ResolveMany<IErrorLogger>(ResolveStrategy.Any);
+        Assert.That(resolved.Count(), Is.EqualTo(2));
+        Assert.That(resolved.Where(logger => logger is ConsoleLoggerWithAttribute).Count(), Is.EqualTo(1));
+        Assert.That(resolved.Where(logger => logger is FileLogger).Count(), Is.EqualTo(1));
     }
 
     [Test]
     public void DIContainerResolveMany_AnyWhenServicesOfSameTypeExistsInCurrentContainerAndInParent_GetFromChild()
     {
         builder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton);
-        using (var parentContainer = builder.Build())
-        {
-            var childBuilder = parentContainer.CreateChildContainer();
-            childBuilder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton);
-            using (var childContainer = childBuilder.Build())
-            {
-                var resolved = childContainer.ResolveMany<IErrorLogger>(ResolveStrategy.Any);
-                Assert.That(resolved.Count(), Is.EqualTo(1));
-                Assert.IsTrue(ReferenceEquals(resolved.FirstOrDefault(), childContainer.Resolve<IErrorLogger>(ResolveStrategy.Local)));
-            }
-        }
+        using var parentContainer = builder.Build();
+        var childBuilder = parentContainer.CreateChildContainer();
+        childBuilder.Register<IErrorLogger, ConsoleLoggerWithAttribute>(ServiceLifetime.Singleton);
+        using var childContainer = childBuilder.Build();
+        var resolved = childContainer.ResolveMany<IErrorLogger>(ResolveStrategy.Any);
+        Assert.That(resolved.Count(), Is.EqualTo(1));
+        Assert.IsTrue(ReferenceEquals(resolved.Single(), childContainer.Resolve<IErrorLogger>(ResolveStrategy.Local)));
+        Assert.IsFalse(ReferenceEquals(resolved.Single(), parentContainer.Resolve<IErrorLogger>(ResolveStrategy.Local)));
     }
 
     [Test]
@@ -529,10 +435,10 @@ public class DependencyInjectionFixture
         {
             var parentContainer = builder.Build();
             var childContainerBuilder = parentContainer.CreateChildContainer();
-            childContainerBuilder.Register<IUserDirectory, PublicDirectoryWithAttribute>(ServiceLifetime.Singleton);
             var childContainer = childContainerBuilder.Build();
             childContainer.Dispose();
             Assert.Throws<InvalidOperationException>(() => childContainer.Dispose());
+            Assert.That(parentContainer.Resolve<IUserDirectory>(), Is.Not.Null);
             parentContainer.Dispose();
         }
     }

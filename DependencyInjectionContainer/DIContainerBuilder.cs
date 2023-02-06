@@ -13,36 +13,50 @@ public sealed class DIContainerBuilder
     public DIContainerBuilder() { }
     internal DIContainerBuilder(DIContainer parent) => parentContainer = parent;
 
-    public void Register<TImplementationInterface, TImplementation>
-        (ServiceLifetime lifetime, Func<DIContainer, TImplementation> implementationFactory = null) where TImplementation : TImplementationInterface
+    public void Register<TImplementationInterface, TImplementation> (ServiceLifetime lifetime) where TImplementation : TImplementationInterface
     {
-        bool implementationFactoryDefined = implementationFactory != null;
-        Func<DIContainer, object> implementationFactoryForService =
-            implementationFactoryDefined ? container => implementationFactory(container) : null;
+        CheckRegistration(lifetime, typeof(TImplementation))
+            .ThrowIfManyCtors(typeof(TImplementation))
+            .services.Add(new Service(typeof(TImplementationInterface), typeof(TImplementation), lifetime));
+    }
 
-        CheckRegistration(lifetime, typeof(TImplementation), implementationFactoryDefined)
+    public void Register<TImplementationInterface, TImplementation>
+        (ServiceLifetime lifetime, Func<DIContainer, TImplementation> implementationFactory) where TImplementation : TImplementationInterface
+    {
+        Func<DIContainer, object> implementationFactoryForService = container => implementationFactory(container);
+
+        CheckRegistration(lifetime, typeof(TImplementation))
             .services.Add(new Service(typeof(TImplementationInterface), typeof(TImplementation), lifetime, implementationFactoryForService));
     }
 
-    public void Register<TImplementation>
-        (ServiceLifetime lifetime, Func<DIContainer, TImplementation> implementationFactory = null) where TImplementation : class
+    public void Register<TImplementation> (ServiceLifetime lifetime) where TImplementation : class
     {
         if (typeof(TImplementation).IsAbstract)
         {
             throw new RegistrationServiceException("Can't register type without assigned implementation type");
         }
+        CheckRegistration(lifetime, typeof(TImplementation))
+            .ThrowIfManyCtors(typeof(TImplementation))
+            .services.Add(new Service(typeof(TImplementation), lifetime));
+    }
 
-        bool implementationFactoryDefined = implementationFactory != null;
-        Func<DIContainer, object> implementationFactoryForService =
-            implementationFactoryDefined ? container => implementationFactory(container) : null;
+    public void Register<TImplementation>
+        (ServiceLifetime lifetime, Func<DIContainer, TImplementation> implementationFactory) where TImplementation : class
+    {
+        if (typeof(TImplementation).IsAbstract)
+        {
+            throw new RegistrationServiceException("Can't register type without assigned implementation type");
+        }
+        
+        Func<DIContainer, object> implementationFactoryForService = container => implementationFactory(container);
 
-        CheckRegistration(lifetime, typeof(TImplementation), implementationFactoryDefined)
+        CheckRegistration(lifetime, typeof(TImplementation))
             .services.Add(new Service(typeof(TImplementation), lifetime, implementationFactoryForService));
     }
 
     public void RegisterWithImplementation(object implementation, ServiceLifetime lifetime)
     {
-        CheckRegistration(lifetime, implementation.GetType(), true)
+        CheckRegistration(lifetime, implementation.GetType())
             .services.Add(new Service(implementation, lifetime));
     }
 
@@ -76,10 +90,9 @@ public sealed class DIContainerBuilder
         return new DIContainer(services, parentContainer);
     }
 
-    private DIContainerBuilder CheckRegistration(ServiceLifetime lifetime, Type implementationType, bool implementationFactoryDefined)
+    private DIContainerBuilder CheckRegistration(ServiceLifetime lifetime, Type implementationType)
     {
         return ThrowIfContainerBuilt()
-               .ThrowIfManyCtors(implementationType, implementationFactoryDefined)
                .ThrowIfTransientDisposable(lifetime, implementationType)
                .ThrowIfImplementationTypeUnappropriate(implementationType);
     }
@@ -95,7 +108,7 @@ public sealed class DIContainerBuilder
 
     private DIContainerBuilder ThrowIfTransientDisposable(ServiceLifetime lifetime, Type implementationType)
     {
-        if(lifetime == ServiceLifetime.Transient && implementationType.GetInterface("IDisposable") != null)
+        if(lifetime == ServiceLifetime.Transient && implementationType.GetInterface(nameof(IDisposable)) != null)
         {
             throw new RegistrationServiceException("It is prohibited to register transient disposable service");
         }
@@ -111,9 +124,9 @@ public sealed class DIContainerBuilder
         return this;
     }
 
-    private DIContainerBuilder ThrowIfManyCtors(Type implementationType, bool implementationFactoryDefined)
+    private DIContainerBuilder ThrowIfManyCtors(Type implementationType)
     {
-        if (!implementationFactoryDefined && implementationType.GetConstructors().Count() != 1)
+        if (implementationType.GetConstructors().Count() != 1)
         {
             throw new RegistrationServiceException(
                 "It is prohibited to register types with many ctors. Try to define ctor or select type with one ctor");

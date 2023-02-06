@@ -1,7 +1,3 @@
-﻿namespace DIFixture.Test_classes
-{
-    internal interface IUserDirectory
-    {
-        string GetInfo();
-    }
-}
+﻿namespace DIFixture.Test_classes;
+
+internal interface IUserDirectory {}

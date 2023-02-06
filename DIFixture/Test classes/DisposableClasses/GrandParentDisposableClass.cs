@@ -1,18 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿namespace DIFixture.Test_classes;
 
-namespace DIFixture.Test_classes
+internal sealed class GrandParentDisposableClass : DisposableClass
 {
-    internal sealed class GrandParentDisposableClass : DisposableClass
+    private ParentDisposableClass child;
+    public GrandParentDisposableClass(ParentDisposableClass childClass, DisposableRegistrator registrator)
     {
-        public GrandParentDisposableClass(ParentDisposableClass childClass, DisposableRegistrator registrator)
-        {
-            Child = childClass;
-            disposableRegistrator = registrator;
-        }
-        public ParentDisposableClass Child { get; init; }
+        child = childClass;
+        disposableRegistrator = registrator;
     }
 }
+

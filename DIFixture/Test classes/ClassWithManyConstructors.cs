@@ -1,27 +1,16 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿namespace DIFixture.Test_classes;
 
-namespace DIFixture.Test_classes
+internal sealed class ClassWithManyConstructors
 {
-    internal sealed class ClassWithManyConstructors
+    public ClassWithManyConstructors() => ConstructorUsed = "Parameterless";
+    public ClassWithManyConstructors(IErrorLogger errorLogger) 
     {
-        IErrorLogger _errorLogger;
-        IUserDirectory _userDirectory;
-        public ClassWithManyConstructors() => CtorUsed = "Parameterless";
-        public ClassWithManyConstructors(IErrorLogger errorLogger) 
-        {
-            CtorUsed = "With IErrorLogger";
-            _errorLogger = errorLogger;
-        }
-        public ClassWithManyConstructors(IUserDirectory userDirectory)
-        {
-            CtorUsed = "With IUserDirectory";
-            _userDirectory = userDirectory;
-        }
-
-        public string CtorUsed { get; init; }
+        ConstructorUsed = "With IErrorLogger";
     }
+    public ClassWithManyConstructors(IUserDirectory userDirectory)
+    {
+        ConstructorUsed = "With IUserDirectory";
+    }
+
+    public string ConstructorUsed { get; init; }
 }

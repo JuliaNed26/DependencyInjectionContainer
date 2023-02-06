@@ -5,10 +5,13 @@ using Enums;
 [AttributeUsage(AttributeTargets.Class, Inherited = false)]
 public sealed class RegisterAttribute : Attribute
 {
-    public RegisterAttribute(ServiceLifetime lifetime, Type interfaceType = null)
+    public RegisterAttribute(ServiceLifetime lifetime, Type interfaceType)
     {
-        IsRegisteredByInterface = interfaceType == null;
         InterfaceType = interfaceType;
+        Lifetime = lifetime;
+    }
+    public RegisterAttribute(ServiceLifetime lifetime)
+    {
         Lifetime = lifetime;
     }
 
