@@ -1,14 +1,19 @@
-﻿namespace DIFixture.Test_classes;
+﻿namespace DIFixture.Test_classes.DisposableClasses;
 
 internal abstract class DisposableClass : IDisposable
 {
-    protected DisposableRegistrator disposableRegistrator;
+    private readonly DisposableSequence disposableSequence;
+
+    protected DisposableClass(DisposableSequence sequence)
+    {
+        disposableSequence = sequence;
+    }
     public bool IsDisposed { get; protected set; }
     public void Dispose()
     {
         if (!IsDisposed)
         {
-            disposableRegistrator.SaveDisposedClassType(this.GetType());
+            disposableSequence.SaveDisposedClassType(GetType());
         }
         IsDisposed = true;
     }

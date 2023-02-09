@@ -5,7 +5,12 @@ VisualStudioVersion = 17.3.32825.248
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DIFixture", "DIFixture\DIFixture.csproj", "{8EB70779-6BDB-4E90-AF1D-E2A2E775C1DF}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DependencyInjectionContainer", "DependencyInjectionContainer\DependencyInjectionContainer.csproj", "{BAEADBD2-5CD9-472B-84A8-6676AF5E4B9A}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DependencyInjectionContainer", "DependencyInjectionContainer\DependencyInjectionContainer.csproj", "{BAEADBD2-5CD9-472B-84A8-6676AF5E4B9A}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{AF72CC03-7622-4BFC-87C4-CB84BF57CA99}"
+	ProjectSection(SolutionItems) = preProject
+		.editorconfig = .editorconfig
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

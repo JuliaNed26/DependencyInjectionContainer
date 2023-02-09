@@ -5,10 +5,10 @@ using Enums;
 
 internal sealed class Service
 {
-    private object serviceInstance;
-    private Func<DIContainer, object> implementationFactory;
+    private object? serviceInstance;
+    private readonly Func<DiContainer, object>? implementationFactory;
 
-    internal Service(Type interfaceType, Type implementationType, ServiceLifetime lifetime, Func<DIContainer, object> implementationFactory)
+    public Service(Type interfaceType, Type implementationType, ServiceLifetime lifetime, Func<DiContainer, object> implementationFactory)
     {
         if (!interfaceType.IsAbstract)
             throw new ArgumentException("First type should be abstract");
@@ -18,7 +18,7 @@ internal sealed class Service
         Lifetime = lifetime;
         this.implementationFactory = implementationFactory;
     }
-    internal Service(Type interfaceType, Type implementationType, ServiceLifetime lifetime)
+    public Service(Type interfaceType, Type implementationType, ServiceLifetime lifetime)
     {
         if (!interfaceType.IsAbstract)
             throw new ArgumentException("First type should be abstract");
@@ -28,35 +28,33 @@ internal sealed class Service
         Lifetime = lifetime;
     }
 
-    internal Service(Type implementationType, ServiceLifetime lifetime, Func<DIContainer, object> implementationFactory)
+    public Service(Type implementationType, ServiceLifetime lifetime, Func<DiContainer, object> implementationFactory)
     {
         Key = Value = implementationType;
         Lifetime = lifetime;
         this.implementationFactory = implementationFactory;
     }
 
-    internal Service(Type implementationType, ServiceLifetime lifetime)
+    public Service(Type implementationType, ServiceLifetime lifetime)
     {
         Key = Value = implementationType;
         Lifetime = lifetime;
     }
 
-    internal Service(object instance, ServiceLifetime lifetime)
+    public Service(object instance, ServiceLifetime lifetime)
     {
         Key = Value = instance.GetType();
         serviceInstance = instance;
         Lifetime = lifetime;
     }
 
-    internal Type Key { get; init; }
-    internal Type Value { get; init; }
-    internal ServiceLifetime Lifetime { get; init; }
-
-    internal object GetOrCreateImplementation_SaveIfSingleton(DIContainer container, ResolveStrategy resolveSource)
+    public Type Key { get; init; }
+    public Type Value { get; init; }
+    public ServiceLifetime Lifetime { get; init; }
+    
+    public object GetOrCreateImplementation_SaveIfSingleton(DiContainer container, ResolveStrategy resolveSource)
     {
-        bool instanceCreated = serviceInstance != null;
-        bool implementationFactoryDefined = implementationFactory != null;
-        if (instanceCreated)
+        if (serviceInstance is not null)
         {
             return serviceInstance;
         }
@@ -66,9 +64,9 @@ internal sealed class Service
         if (Lifetime == ServiceLifetime.Singleton)
         {
             serviceInstance = implementation;
-            if (serviceInstance is IDisposable)
+            if (serviceInstance is IDisposable disposableService)
             {
-                container.ServicesDisposer.Add((IDisposable)serviceInstance);
+                container.ServicesDisposer.Add(disposableService);
             }
         }
 
@@ -76,7 +74,7 @@ internal sealed class Service
 
         object GetCreatedImplementationForService()
         {
-            if (implementationFactoryDefined)
+            if (implementationFactory is not null)
             {
                 return implementationFactory(container);
             }

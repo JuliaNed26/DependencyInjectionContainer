@@ -9,13 +9,16 @@ public sealed class RegisterAttribute : Attribute
     {
         InterfaceType = interfaceType;
         Lifetime = lifetime;
+        IsRegisteredByInterface = true;
     }
+
     public RegisterAttribute(ServiceLifetime lifetime)
     {
         Lifetime = lifetime;
+        IsRegisteredByInterface = false;
     }
 
     public bool IsRegisteredByInterface { get; init; }
-    public Type InterfaceType { get;}
+    public Type? InterfaceType { get;}
     public ServiceLifetime Lifetime { get;}
 }

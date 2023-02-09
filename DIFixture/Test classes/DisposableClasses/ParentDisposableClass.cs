@@ -1,12 +1,10 @@
-﻿namespace DIFixture.Test_classes;
+﻿using JetBrains.Annotations;
+
+namespace DIFixture.Test_classes.DisposableClasses;
 
 internal sealed class ParentDisposableClass : DisposableClass
 {
-    private ChildDisposableClass child;
-    public ParentDisposableClass(ChildDisposableClass childClass, DisposableRegistrator registrator)
-    {
-        child = childClass;
-        disposableRegistrator = registrator;
-    }
+    [UsedImplicitly]
+    public ParentDisposableClass(ChildDisposableClass childClass, DisposableSequence sequence) : base(sequence){}
 }
 

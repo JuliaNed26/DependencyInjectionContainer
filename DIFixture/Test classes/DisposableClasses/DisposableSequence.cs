@@ -1,8 +1,8 @@
-﻿namespace DIFixture.Test_classes;
+﻿namespace DIFixture.Test_classes.DisposableClasses;
 
-internal sealed class DisposableRegistrator
+internal sealed class DisposableSequence
 {
-    private List<Type> disposedItems = new List<Type>();
+    private readonly List<Type> disposedItems = new();
 
     public void SaveDisposedClassType(Type disposedType) => disposedItems.Add(disposedType);
     public IEnumerable<Type> GetDisposedClasses() => disposedItems;

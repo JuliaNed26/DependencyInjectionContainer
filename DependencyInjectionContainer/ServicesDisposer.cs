@@ -5,11 +5,11 @@ using System.Linq;
 
 internal sealed class ServicesDisposer : IDisposable
 {
-    private HashSet<object> instances = new HashSet<object>();
+    private readonly List<object> instances = new();
 
     public void Dispose()
     {
-        for(int i = instances.Count - 1; i >= 0; i--)
+        for(var i = instances.Count - 1; i >= 0; i--)
         {
             if(instances.ElementAt(i) is IDisposable disposable)
             {
@@ -19,5 +19,5 @@ internal sealed class ServicesDisposer : IDisposable
         instances.Clear();
     }
 
-    internal void Add(IDisposable instance) => instances.Add(instance);
+    public void Add(IDisposable instance) => instances.Add(instance);
 }

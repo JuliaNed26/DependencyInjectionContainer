@@ -1,10 +1,7 @@
-﻿namespace DIFixture.Test_classes;
+﻿namespace DIFixture.Test_classes.DisposableClasses;
 
 internal sealed class ChildDisposableClass : DisposableClass
 {
-    public ChildDisposableClass(DisposableRegistrator registrator)
-    {
-        disposableRegistrator = registrator;
-    }
+    public ChildDisposableClass(DisposableSequence sequence) : base(sequence) {}
 }
 
