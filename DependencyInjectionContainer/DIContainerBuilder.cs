@@ -189,7 +189,7 @@ public sealed class DiContainerBuilder
     private void ThrowIfImplTypeNotConvertibleToServiceType(Type serviceType, Type implementationType)
     {
         if ((serviceType.IsGenericTypeDefinition && !implementationType.IsAssignableToGenericType(serviceType))
-            && !implementationType.IsAssignableTo(serviceType))
+            || !implementationType.IsAssignableTo(serviceType))
         {
             throw new ArgumentException(
                 $@"Given implementation type {implementationType} is not convertible to type {serviceType}");
