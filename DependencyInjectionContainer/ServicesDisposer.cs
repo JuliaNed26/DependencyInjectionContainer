@@ -7,7 +7,7 @@ internal sealed class ServicesDisposer : IDisposable
 {
     private readonly List<object> instances = new();
 
-    public void Dispose()
+    public async void Dispose()
     {
         for(var i = instances.Count - 1; i >= 0; i--)
         {
@@ -15,9 +15,14 @@ internal sealed class ServicesDisposer : IDisposable
             {
                 disposable.Dispose();
             }
+            if (instances.ElementAt(i) is IAsyncDisposable asyncDisposable)
+            {
+                await asyncDisposable.DisposeAsync().ConfigureAwait(true);
+            }
         }
         instances.Clear();
     }
 
     public void Add(IDisposable instance) => instances.Add(instance);
+    public void Add(IAsyncDisposable instance) => instances.Add(instance);
 }

@@ -4,11 +4,16 @@ using System.Runtime.ExceptionServices;
 using Enums;
 using Exceptions;
 
-public sealed class DiContainer : IDisposable
+public sealed class DiContainer : IDisposable, IServiceProvider
 {
     private bool isDisposed;
     private readonly IEnumerable<Service> registeredServices;
     private readonly DiContainer? parent;
+
+    public DiContainer()
+    {
+        ServicesDisposer = new ServicesDisposer();
+    }
 
     internal DiContainer(IEnumerable<Service> services, DiContainer? parent)
     {
@@ -69,13 +74,22 @@ public sealed class DiContainer : IDisposable
             ResolveNonLocal().Where(resolved => resolvedServices.All(item => item.GetType() != resolved.GetType()));
     }
 
+    public bool IsServiceRegistered(Type serviceType) => registeredServices
+        .Any(service => service.Key == serviceType || 
+                        (serviceType.IsGenericType && service.Key.IsGenericTypeDefinition && service.Key.GetGenericTypeDefinition() == serviceType.GetGenericTypeDefinition()));
+
     public void Dispose()
     {
         ThrowIfDisposed();
         isDisposed = true;
         ServicesDisposer.Dispose();
     }
-    
+
+    public object GetService(Type serviceType)
+    {
+        return Resolve(serviceType, ResolveStrategy.Any);
+    }
+
     internal object Resolve(Type typeToResolve, ResolveStrategy resolveSource)
     {
         ThrowIfDisposed();
@@ -101,15 +115,15 @@ public sealed class DiContainer : IDisposable
                 return parent!.Resolve(typeToResolve, ResolveStrategy.Any);
 
             case ResolveStrategy.Any:
-                if (TryGetRegistration(typeToResolve, ResolveStrategy.Any, out Service? foundService))
-                {
-                    return foundService!.GetOrCreateImplementation_SaveIfSingleton(this, resolveSource);
-                }
-                throw new ServiceNotFoundException(typeToResolve);
-
             case ResolveStrategy.Local:
-                if (TryGetRegistration(typeToResolve, ResolveStrategy.Local, out foundService))
+                if (TryGetRegistration(typeToResolve, resolveSource, out Service? foundService))
                 {
+                    if (typeToResolve.IsGenericType && (foundService!.Value is not null && foundService.Value.IsGenericTypeDefinition))
+                    {
+                        var genericTypes = typeToResolve.GenericTypeArguments;
+                        foundService = new Service(foundService.Key,
+                            foundService.Value!.MakeGenericType(genericTypes), foundService.Lifetime);
+                    }
                     return foundService!.GetOrCreateImplementation_SaveIfSingleton(this, resolveSource);
                 }
                 throw new ServiceNotFoundException(typeToResolve);
@@ -119,24 +133,17 @@ public sealed class DiContainer : IDisposable
         }
     }
 
-    private void ThrowIfDisposed()
-    { 
-        if (isDisposed)
-        {
-            throw new InvalidOperationException("This container was disposed");
-        }
-    }
-
-    private bool TryGetRegistration(Type typeForSearch, ResolveStrategy resolveSource, out Service? foundService)
+    internal bool TryGetRegistration(Type typeForSearch, ResolveStrategy resolveSource, out Service? foundService)
     {
-        List<Service> servicesImplementsType = new List<Service>();
+        List<Service> servicesImplementsType = new ();
 
         switch (resolveSource)
         {
             case ResolveStrategy.Local:
                 servicesImplementsType = registeredServices
-                                         .Where(service => service.Key == typeForSearch)
-                                         .ToList();
+                    .Where(service => service.Key == typeForSearch || service.Key.FullName == typeForSearch.GetGenericNameWithoutGenericType())
+                    .ToList();
+
                 break;
             case ResolveStrategy.Any:
                 servicesImplementsType = TakeFirstRegistered();
@@ -146,10 +153,10 @@ public sealed class DiContainer : IDisposable
             default:
                 throw new ArgumentException("Wrong resolve source type");
         }
-
+        //check rule
         if (servicesImplementsType.Count > 1)
         {
-            throw new ResolveServiceException($"Many services with type {typeForSearch} was registered. Use ResolveMany to resolve them all");
+            throw new ResolveServiceException($"Many services with type {typeForSearch} was registered.");
         }
         
         foundService = servicesImplementsType.SingleOrDefault();
@@ -162,11 +169,19 @@ public sealed class DiContainer : IDisposable
             while (curContainer != null && found.Count == 0)
             {
                 found = curContainer.registeredServices
-                    .Where(service => service.Key == typeForSearch)
+                    .Where(service => service.Key == typeForSearch || service.Key.FullName == typeForSearch.GetGenericNameWithoutGenericType())
                     .ToList();
                 curContainer = curContainer.parent;
             }
             return found;
+        }
+    }
+
+    private void ThrowIfDisposed()
+    {
+        if (isDisposed)
+        {
+            throw new InvalidOperationException("This container was disposed");
         }
     }
 

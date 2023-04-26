@@ -1,4 +1,5 @@
 ﻿using System.Reflection;
+using DependencyInjectionContainer.Exceptions;
 
 namespace DependencyInjectionContainer;
 using Enums;
@@ -6,42 +7,47 @@ using Enums;
 internal sealed class Service
 {
     private object? serviceInstance;
-    private readonly Func<DiContainer, object>? implementationFactory;
+    private Func<DiContainer, object>? implementationFactory;
 
-    public Service(Type interfaceType, Type implementationType, ServiceLifetime lifetime, Func<DiContainer, object> implementationFactory)
+    public Service(Type serviceType, Type implementationType, LifetimeOfService lifetime, Func<DiContainer, object> implementationFactory)
     {
-        if (!interfaceType.IsAbstract)
-            throw new ArgumentException("First type should be abstract");
-
-        Key = interfaceType;
+        Key = serviceType;
         Value = implementationType;
         Lifetime = lifetime;
         this.implementationFactory = implementationFactory;
     }
-    public Service(Type interfaceType, Type implementationType, ServiceLifetime lifetime)
+    public Service(Type serviceType, Type implementationType, LifetimeOfService lifetime)
     {
-        if (!interfaceType.IsAbstract)
-            throw new ArgumentException("First type should be abstract");
-
-        Key = interfaceType;
+        Key = serviceType;
         Value = implementationType;
         Lifetime = lifetime;
     }
 
-    public Service(Type implementationType, ServiceLifetime lifetime, Func<DiContainer, object> implementationFactory)
+    public Service(Type serviceType, LifetimeOfService lifetime, Func<DiContainer, object> implementationFactory)
     {
-        Key = Value = implementationType;
+        Key = serviceType;
         Lifetime = lifetime;
         this.implementationFactory = implementationFactory;
     }
 
-    public Service(Type implementationType, ServiceLifetime lifetime)
+    public Service(Type serviceType, LifetimeOfService lifetime)
     {
-        Key = Value = implementationType;
+        if (serviceType.IsAbstract)
+        {
+            throw new ArgumentException("Can't register type without assigned implementation type or factory");
+        }
+        Key = Value = serviceType;
+        Lifetime = lifetime;
+    }
+    public Service(Type interfaceType, object instance, LifetimeOfService lifetime)
+    {
+        Key = interfaceType;
+        Value = instance.GetType();
+        serviceInstance = instance;
         Lifetime = lifetime;
     }
 
-    public Service(object instance, ServiceLifetime lifetime)
+    public Service(object instance, LifetimeOfService lifetime)
     {
         Key = Value = instance.GetType();
         serviceInstance = instance;
@@ -49,8 +55,8 @@ internal sealed class Service
     }
 
     public Type Key { get; init; }
-    public Type Value { get; init; }
-    public ServiceLifetime Lifetime { get; init; }
+    public Type? Value { get; private set; }
+    public LifetimeOfService Lifetime { get; private set; }
     
     public object GetOrCreateImplementation_SaveIfSingleton(DiContainer container, ResolveStrategy resolveSource)
     {
@@ -61,13 +67,19 @@ internal sealed class Service
 
         var implementation = GetCreatedImplementationForService();
 
-        if (Lifetime == ServiceLifetime.Singleton)
+        if (Lifetime == LifetimeOfService.Singleton)
         {
             serviceInstance = implementation;
-            if (serviceInstance is IDisposable disposableService)
-            {
-                container.ServicesDisposer.Add(disposableService);
-            }
+        }
+
+        if (implementation is IDisposable disposableService)
+        {
+            container.ServicesDisposer.Add(disposableService);
+        }
+
+        if (implementation is IAsyncDisposable asyncDisposableService)
+        {
+            container.ServicesDisposer.Add(asyncDisposableService);
         }
 
         return implementation;
@@ -79,9 +91,7 @@ internal sealed class Service
                 return implementationFactory(container);
             }
 
-            var ctor = Value
-                                    .GetConstructors(BindingFlags.Public | BindingFlags.Instance)
-                                    .Single();
+            var ctor = GetAppropriateConstructor();
 
             var parameters = ctor
                 .GetParameters()
@@ -90,6 +100,76 @@ internal sealed class Service
 
             var createdImplementation = ctor.Invoke(parameters);
             return createdImplementation;
+
+            ConstructorInfo GetAppropriateConstructor()
+            {
+                var constructors = Value!.GetConstructors(BindingFlags.Public | BindingFlags.Instance).ToList();
+                //BindingFlags.Instance - gets non static members
+
+                if (constructors.Count == 1)
+                {
+                    return constructors.Single();
+                }
+
+                return GetAppropriateConstructorAmongMany(constructors);
+            }
+
+            ConstructorInfo GetAppropriateConstructorAmongMany(List<ConstructorInfo> constructorsOfType)
+            {
+                constructorsOfType = constructorsOfType.OrderByDescending(curCtor => curCtor.GetParameters().Length).ToList();
+
+                ConstructorInfo? appropriateCtor = null;
+
+                foreach (var constructor in constructorsOfType)
+                {
+                    if (appropriateCtor != null &&
+                        constructor.GetParameters().Length < appropriateCtor.GetParameters().Length)
+                    {
+                        break;
+                    }
+
+                    bool isCurAppropriate = true;
+                    foreach (var parameter in constructor.GetParameters())
+                    {
+                        bool containsParameter = !parameter.ParameterType.IsEnumerable() &&
+                                                 container.IsServiceRegistered(parameter.ParameterType);
+
+                        bool containsGenericParameter = parameter.ParameterType.IsEnumerable() &&
+                                                        container.IsServiceRegistered(
+                                                            parameter.ParameterType.GetGenericArguments()[0]);
+
+                        if (!containsParameter && !containsGenericParameter)
+                        {
+                            isCurAppropriate = false;
+                            break;
+                        }
+                    }
+
+                    if (isCurAppropriate)
+                    {
+                        appropriateCtor = appropriateCtor is null
+                            ? constructor
+                            : throw new ResolveServiceException("There's ambiguity when discovering constructors");
+                    }
+                }
+
+                if (appropriateCtor == null)
+                {
+                    throw new ResolveServiceException(
+                        "Could not find appropriate constructor. Maybe you forgot to register some services or " +
+                        "constructor contains value parameter.");
+                }
+
+                return appropriateCtor;
+            }
         }
+    }
+
+    internal void CopyService(Service service)
+    {
+        Value = service.Value;
+        Lifetime = service.Lifetime;
+        serviceInstance = service.serviceInstance;
+        implementationFactory = service.implementationFactory;
     }
 }

@@ -10,54 +10,44 @@ public sealed class DiContainerBuilder
 {
     private readonly List<Service> services = new();
     private readonly DiContainer? parentContainer;
+    private readonly Rules rules = Rules.None;
+    private readonly SecondRegistrationAction secondRegistrationRule = SecondRegistrationAction.Throw;
     private bool isBuild;
 
     public DiContainerBuilder() { }
+
+    public DiContainerBuilder(Rules givenRules = Rules.None, SecondRegistrationAction action = SecondRegistrationAction.Throw)
+    {
+        rules = givenRules;
+        secondRegistrationRule = action;
+    }
+
     internal DiContainerBuilder(DiContainer parent) => parentContainer = parent;
 
-    public void Register<TImplementationInterface, TImplementation> (ServiceLifetime lifetime) where TImplementation : TImplementationInterface
-    {
-        CheckRegistration(lifetime, typeof(TImplementation))
-            .ThrowIfManyConstructors(typeof(TImplementation))
-            .services.Add(new Service(typeof(TImplementationInterface), typeof(TImplementation), lifetime));
-    }
+    public void Register<TServiceType, TImplementation> (LifetimeOfService lifetime) where TImplementation : TServiceType 
+        => Register(typeof(TServiceType), typeof(TImplementation), lifetime);
 
-    [UsedImplicitly]
-    public void Register<TImplementationInterface, TImplementation>
-        (ServiceLifetime lifetime, Func<DiContainer, TImplementation> implementationFactory) where TImplementation : TImplementationInterface
-    {
-        CheckRegistration(lifetime, typeof(TImplementation))
-            .services.Add(new Service(typeof(TImplementationInterface), typeof(TImplementation), lifetime,
-                container => implementationFactory(container)!));
-    }
+    [AssertionMethod]
 
-    public void Register<TImplementation> (ServiceLifetime lifetime) where TImplementation : class
-    {
-        if (typeof(TImplementation).IsAbstract)
-        {
-            throw new RegistrationServiceException("Can't register type without assigned implementation type");
-        }
-        CheckRegistration(lifetime, typeof(TImplementation))
-            .ThrowIfManyConstructors(typeof(TImplementation))
-            .services.Add(new Service(typeof(TImplementation), lifetime));
-    }
+    public void Register<TServiceType, TImplementation>
+        (LifetimeOfService lifetime, Func<DiContainer, TServiceType> implementationFactory) where TImplementation : TServiceType
+        => Register(typeof(TServiceType), typeof(TImplementation), lifetime,
+            container => implementationFactory(container)!);
 
-    public void Register<TImplementation>
-        (ServiceLifetime lifetime, Func<DiContainer, TImplementation> implementationFactory) where TImplementation : class
-    {
-        if (typeof(TImplementation).IsAbstract)
-        {
-            throw new RegistrationServiceException("Can't register type without assigned implementation type");
-        }
+    public void Register<TImplementation> (LifetimeOfService lifetime) where TImplementation : class 
+        => Register( typeof(TImplementation), lifetime);
 
-        CheckRegistration(lifetime, typeof(TImplementation))
-            .services.Add(new Service(typeof(TImplementation), lifetime, implementationFactory));
-    }
+    public void Register<TServiceType>
+        (LifetimeOfService lifetime, Func<DiContainer, TServiceType> implementationFactory) where TServiceType : class
+       => Register(typeof(TServiceType), lifetime, implementationFactory);
 
-    public void RegisterWithImplementation(object implementation, ServiceLifetime lifetime)
+    public void RegisterWithImplementation<TServiceType>(object implementation, LifetimeOfService lifetime)
+       => RegisterWithImplementation(typeof(TServiceType), implementation, lifetime);
+
+    public void RegisterWithImplementation(object implementation, LifetimeOfService lifetime)
     {
-        CheckRegistration(lifetime, implementation.GetType())
-            .services.Add(new Service(implementation, lifetime));
+        ThrowIfContainerBuilt().TreatTransientDisposable(lifetime, implementation.GetType());
+        RegisterDependingFromActionOnSecondRegistration(new Service(implementation, lifetime));
     }
 
     public void RegisterAssemblyByAttributes(Assembly assembly)
@@ -65,18 +55,19 @@ public sealed class DiContainerBuilder
         ThrowIfContainerBuilt();
 
         var typesWithRegisterAttribute = assembly
-                                         .GetTypes()
-                                         .Where(t => t.GetCustomAttribute<RegisterAttribute>() != null);
+            .GetTypes()
+            .Where(t => t.GetCustomAttribute<RegisterAttribute>() != null);
 
         foreach (var type in typesWithRegisterAttribute)
         {
             var serviceInfo = type.GetCustomAttribute<RegisterAttribute>()!;
 
-                ThrowIfTransientDisposable(serviceInfo.Lifetime, type)
-                .ThrowIfImplementationTypeInappropriate(type)
-                .services.Add(serviceInfo.IsRegisteredByInterface
-                          ? new Service(serviceInfo.InterfaceType!, type, serviceInfo.Lifetime)
-                          : new Service(type, serviceInfo.Lifetime));
+            ThrowIfContainerBuilt().TreatTransientDisposable(serviceInfo.Lifetime, type);
+            TreatWithManyConstructors(type, false);
+            var serviceToRegister = serviceInfo.IsRegisteredByInterface
+                ? new Service(serviceInfo.InterfaceType!, type, serviceInfo.Lifetime)
+                : new Service(type, serviceInfo.Lifetime);
+            RegisterDependingFromActionOnSecondRegistration(serviceToRegister);
         }
     }
 
@@ -90,11 +81,77 @@ public sealed class DiContainerBuilder
         return new DiContainer(services, parentContainer);
     }
 
-    private DiContainerBuilder CheckRegistration(ServiceLifetime lifetime, Type implementationType)
+    private void RegisterWithImplementation(Type serviceType, object implementation, LifetimeOfService lifetime)
     {
-        return ThrowIfContainerBuilt()
-               .ThrowIfTransientDisposable(lifetime, implementationType)
-               .ThrowIfImplementationTypeInappropriate(implementationType);
+        ThrowIfImplTypeNotConvertibleToServiceType(serviceType, implementation.GetType());
+        ThrowIfContainerBuilt()
+            .TreatTransientDisposable(lifetime, implementation.GetType());
+        RegisterDependingFromActionOnSecondRegistration(new Service(serviceType, implementation, lifetime));
+    }
+
+    private void Register(Type interfaceType, Type implementationType, LifetimeOfService lifetime)
+    {
+        ThrowIfImplTypeNotConvertibleToServiceType(interfaceType, implementationType);
+        ThrowIfContainerBuilt().TreatTransientDisposable(lifetime, implementationType)
+            .TreatWithManyConstructors(implementationType, false);
+        RegisterDependingFromActionOnSecondRegistration(new Service(interfaceType, implementationType, lifetime));
+    }
+
+    private void Register(Type implementationType, LifetimeOfService lifetime)
+    {
+        if (implementationType.IsAbstract)
+        {
+            throw new RegistrationServiceException("Can't register type without assigned implementation type");
+        }
+        ThrowIfContainerBuilt()
+            .TreatTransientDisposable(lifetime, implementationType).TreatWithManyConstructors(implementationType, false);
+        RegisterDependingFromActionOnSecondRegistration(new Service(implementationType, lifetime));
+    }
+
+    //how to check that factory returns serviceType
+    private void Register(Type serviceType, LifetimeOfService lifetime, Func<DiContainer, object> implementationFactory)
+    {
+        ThrowIfContainerBuilt().TreatWithManyConstructors(serviceType, true);
+        RegisterDependingFromActionOnSecondRegistration(new Service(serviceType, lifetime, implementationFactory));
+    }
+
+    //how to check that factory returns serviceType
+    private void Register(Type interfaceType, Type implementationType, LifetimeOfService lifetime,
+        Func<DiContainer, object> implementationFactory)
+    {
+        ThrowIfImplTypeNotConvertibleToServiceType(interfaceType, implementationType);
+        ThrowIfContainerBuilt().TreatTransientDisposable(lifetime, implementationType)
+            .TreatWithManyConstructors(implementationType, false);
+        RegisterDependingFromActionOnSecondRegistration(new Service(interfaceType, implementationType, lifetime, implementationFactory));
+    }
+
+    private void RegisterDependingFromActionOnSecondRegistration(Service service)
+    {
+        if (services.Any(localService => localService.Value == service.Value && localService.Key == service.Key))
+        {
+            switch (secondRegistrationRule)
+            {
+                case SecondRegistrationAction.Throw:
+                    throw new RegistrationServiceException(
+                        $"Service with type {service.Key.FullName} has been already registered");
+                case SecondRegistrationAction.Ignore:
+                    break;
+                case SecondRegistrationAction.Rewrite:
+                    foreach (var curService in services.Where(x => x.Value == service.Value && x.Key == service.Key))
+                    {
+                        curService.CopyService(service);
+                    }
+                    break;
+                default:
+                    throw new ArgumentException("Do not have such action for second registration");
+
+            }
+        }
+        else
+        {
+            services.Add(service);
+        }
+
     }
 
     private DiContainerBuilder ThrowIfContainerBuilt()
@@ -107,34 +164,35 @@ public sealed class DiContainerBuilder
     }
 
     [AssertionMethod]
-    private DiContainerBuilder ThrowIfTransientDisposable(ServiceLifetime lifetime, Type implementationType)
+    private DiContainerBuilder TreatTransientDisposable(LifetimeOfService lifetime, Type implementationType)
     {
-        if(lifetime == ServiceLifetime.Transient && implementationType.GetInterface(nameof(IDisposable)) != null)
+        if((rules & Rules.DisposeTransientWhenDisposeContainer) == 0 && 
+           lifetime == LifetimeOfService.Transient && implementationType.GetInterface(nameof(IDisposable)) != null)
         {
             throw new RegistrationServiceException("It is prohibited to register transient disposable service");
         }
         return this;
     }
 
-    private DiContainerBuilder ThrowIfImplementationTypeInappropriate(Type implementationType)
-    {
-        if (services.Any(service => service.Value == implementationType))
-        {
-            throw new RegistrationServiceException($"Service with type {implementationType.FullName} has been already registered");
-        }
-        return this;
-    }
-
-
     [AssertionMethod]
-    private DiContainerBuilder ThrowIfManyConstructors(Type implementationType)
+    private void TreatWithManyConstructors(Type implementationType, bool factoryExists)
     {
-        if (implementationType.GetConstructors().Length != 1)
+        if ((rules & Rules.GetConstructorWithMostRegisteredParameters) == 0 && !factoryExists
+                                                                      && implementationType.GetConstructors().Length != 1)
         {
             throw new RegistrationServiceException(
                 "It is prohibited to register types with many constructors. Try to define ctor or select type with one ctor");
         }
+    }
 
-        return this;
+    [AssertionMethod]
+    private void ThrowIfImplTypeNotConvertibleToServiceType(Type serviceType, Type implementationType)
+    {
+        if ((serviceType.IsGenericTypeDefinition && !implementationType.IsAssignableToGenericType(serviceType))
+            && !implementationType.IsAssignableTo(serviceType))
+        {
+            throw new ArgumentException(
+                $@"Given implementation type {implementationType} is not convertible to type {serviceType}");
+        }
     }
 }
