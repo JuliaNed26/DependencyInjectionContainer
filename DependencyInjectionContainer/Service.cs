@@ -1,45 +1,50 @@
 ﻿using System.Reflection;
+
 using DependencyInjectionContainer.Exceptions;
+using DependencyInjectionContainer.Enums;
 
 namespace DependencyInjectionContainer;
-using Enums;
 
 internal sealed class Service
 {
     private object? serviceInstance;
-    private Func<DiContainer, object>? implementationFactory;
+    internal Func<DiContainer, object>? ImplementationFactory { get; private set; }
 
-    public Service(Type serviceType, Type implementationType, LifetimeOfService lifetime, Func<DiContainer, object> implementationFactory)
+    public Service(Type serviceType, Type implementationType, ServiceLifetime lifetime,
+        Func<DiContainer, object> implementationFactory)
     {
         Key = serviceType;
         Value = implementationType;
         Lifetime = lifetime;
-        this.implementationFactory = implementationFactory;
+        this.ImplementationFactory = implementationFactory;
     }
-    public Service(Type serviceType, Type implementationType, LifetimeOfService lifetime)
+
+    public Service(Type serviceType, Type implementationType, ServiceLifetime lifetime)
     {
         Key = serviceType;
         Value = implementationType;
         Lifetime = lifetime;
     }
 
-    public Service(Type serviceType, LifetimeOfService lifetime, Func<DiContainer, object> implementationFactory)
+    public Service(Type serviceType, ServiceLifetime lifetime, Func<DiContainer, object> implementationFactory)
     {
         Key = serviceType;
         Lifetime = lifetime;
-        this.implementationFactory = implementationFactory;
+        this.ImplementationFactory = implementationFactory;
     }
 
-    public Service(Type serviceType, LifetimeOfService lifetime)
+    public Service(Type serviceType, ServiceLifetime lifetime)
     {
         if (serviceType.IsAbstract)
         {
             throw new ArgumentException("Can't register type without assigned implementation type or factory");
         }
+
         Key = Value = serviceType;
         Lifetime = lifetime;
     }
-    public Service(Type interfaceType, object instance, LifetimeOfService lifetime)
+
+    public Service(Type interfaceType, object instance, ServiceLifetime lifetime)
     {
         Key = interfaceType;
         Value = instance.GetType();
@@ -47,7 +52,7 @@ internal sealed class Service
         Lifetime = lifetime;
     }
 
-    public Service(object instance, LifetimeOfService lifetime)
+    public Service(object instance, ServiceLifetime lifetime)
     {
         Key = Value = instance.GetType();
         serviceInstance = instance;
@@ -56,18 +61,19 @@ internal sealed class Service
 
     public Type Key { get; init; }
     public Type? Value { get; private set; }
-    public LifetimeOfService Lifetime { get; private set; }
-    
-    public object GetOrCreateImplementation_SaveIfSingleton(DiContainer container, ResolveStrategy resolveSource)
+    public ServiceLifetime Lifetime { get; private set; }
+
+    public object GetOrCreateImplementation(DiContainer container, ResolveStrategy resolveStrategy)
     {
         if (serviceInstance is not null)
         {
             return serviceInstance;
         }
 
-        var implementation = GetCreatedImplementationForService();
+        var implementation =
+            ServiceInstanceCreator.GetCreatedImplementationForService(this, container, resolveStrategy);
 
-        if (Lifetime == LifetimeOfService.Singleton)
+        if (Lifetime == ServiceLifetime.Singleton)
         {
             serviceInstance = implementation;
         }
@@ -83,86 +89,6 @@ internal sealed class Service
         }
 
         return implementation;
-
-        object GetCreatedImplementationForService()
-        {
-            if (implementationFactory is not null)
-            {
-                return implementationFactory(container);
-            }
-
-            var ctor = GetAppropriateConstructor();
-
-            var parameters = ctor
-                .GetParameters()
-                .Select(parameter => container.Resolve(parameter.ParameterType, resolveSource))
-                .ToArray();
-
-            var createdImplementation = ctor.Invoke(parameters);
-            return createdImplementation;
-
-            ConstructorInfo GetAppropriateConstructor()
-            {
-                var constructors = Value!.GetConstructors(BindingFlags.Public | BindingFlags.Instance).ToList();
-                //BindingFlags.Instance - gets non static members
-
-                if (constructors.Count == 1)
-                {
-                    return constructors.Single();
-                }
-
-                return GetAppropriateConstructorAmongMany(constructors);
-            }
-
-            ConstructorInfo GetAppropriateConstructorAmongMany(List<ConstructorInfo> constructorsOfType)
-            {
-                constructorsOfType = constructorsOfType.OrderByDescending(curCtor => curCtor.GetParameters().Length).ToList();
-
-                ConstructorInfo? appropriateCtor = null;
-
-                foreach (var constructor in constructorsOfType)
-                {
-                    if (appropriateCtor != null &&
-                        constructor.GetParameters().Length < appropriateCtor.GetParameters().Length)
-                    {
-                        break;
-                    }
-
-                    bool isCurAppropriate = true;
-                    foreach (var parameter in constructor.GetParameters())
-                    {
-                        bool containsParameter = !parameter.ParameterType.IsEnumerable() &&
-                                                 container.IsServiceRegistered(parameter.ParameterType);
-
-                        bool containsGenericParameter = parameter.ParameterType.IsEnumerable() &&
-                                                        container.IsServiceRegistered(
-                                                            parameter.ParameterType.GetGenericArguments()[0]);
-
-                        if (!containsParameter && !containsGenericParameter)
-                        {
-                            isCurAppropriate = false;
-                            break;
-                        }
-                    }
-
-                    if (isCurAppropriate)
-                    {
-                        appropriateCtor = appropriateCtor is null
-                            ? constructor
-                            : throw new ResolveServiceException("There's ambiguity when discovering constructors");
-                    }
-                }
-
-                if (appropriateCtor == null)
-                {
-                    throw new ResolveServiceException(
-                        "Could not find appropriate constructor. Maybe you forgot to register some services or " +
-                        "constructor contains value parameter.");
-                }
-
-                return appropriateCtor;
-            }
-        }
     }
 
     internal void CopyService(Service service)
@@ -170,6 +96,90 @@ internal sealed class Service
         Value = service.Value;
         Lifetime = service.Lifetime;
         serviceInstance = service.serviceInstance;
-        implementationFactory = service.implementationFactory;
+        ImplementationFactory = service.ImplementationFactory;
     }
 }
+
+internal static class ServiceInstanceCreator
+{
+    public static object GetCreatedImplementationForService(Service service, DiContainer container, ResolveStrategy resolveStrategy)
+    {
+        if (service.ImplementationFactory is not null)
+        {
+            return service.ImplementationFactory(container);
+        }
+
+        var ctor = GetAppropriateConstructor(service, container);
+
+        var parameters = ctor
+            .GetParameters()
+        .Select(parameter => container.Resolve(parameter.ParameterType, resolveStrategy))
+            .ToArray();
+
+        var createdImplementation = ctor.Invoke(parameters);
+        return createdImplementation;
+    }
+
+    private static ConstructorInfo GetAppropriateConstructor(Service service, DiContainer container)
+    {
+        var constructors = service.Value!.GetConstructors(BindingFlags.Public | BindingFlags.Instance).ToList();
+        //BindingFlags.Instance - gets non static members
+
+        if (constructors.Count == 1)
+        {
+            return constructors.Single();
+        }
+
+        return GetAppropriateConstructorAmongMany(constructors, container);
+    }
+
+    private static ConstructorInfo GetAppropriateConstructorAmongMany(List<ConstructorInfo> constructorsOfType, DiContainer container)
+    {
+        constructorsOfType = constructorsOfType.OrderByDescending(curCtor => curCtor.GetParameters().Length).ToList();
+
+        ConstructorInfo? appropriateConstructor = null;
+
+        foreach (var constructor in constructorsOfType)
+        {
+            if (appropriateConstructor != null &&
+                constructor.GetParameters().Length < appropriateConstructor.GetParameters().Length)
+            {
+                break;
+            }
+
+            bool currentConstructorAppropriate = true;
+            foreach (var parameter in constructor.GetParameters())
+            {
+                bool containsParameter = !parameter.ParameterType.IsEnumerable() &&
+                container.IsServiceRegistered(parameter.ParameterType);
+
+                bool containsGenericParameter = parameter.ParameterType.IsEnumerable() &&
+                container.IsServiceRegistered(
+                                                    parameter.ParameterType.GetGenericArguments()[0]);
+
+                if (!containsParameter && !containsGenericParameter)
+                {
+                    currentConstructorAppropriate = false;
+                    break;
+                }
+            }
+
+            if (currentConstructorAppropriate)
+            {
+                appropriateConstructor = appropriateConstructor is null
+                    ? constructor
+                    : throw new ResolveServiceException("There's ambiguity when discovering constructors");
+            }
+        }
+
+        if (appropriateConstructor == null)
+        {
+            throw new ResolveServiceException(
+                "Could not find appropriate constructor. Maybe you forgot to register some services or " +
+                "constructor contains value parameter.");
+        }
+
+        return appropriateConstructor;
+    }
+}
+

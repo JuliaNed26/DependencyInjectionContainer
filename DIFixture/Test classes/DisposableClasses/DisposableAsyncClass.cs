@@ -1,6 +1,6 @@
 ﻿namespace DIFixture.Test_classes.DisposableClasses
 {
-    internal sealed class DisposableAsyncClass:IAsyncDisposable
+    internal sealed class DisposableAsyncClass : IAsyncDisposable
     {
         private readonly DisposableSequence disposableSequence;
 

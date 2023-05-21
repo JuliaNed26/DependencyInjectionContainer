@@ -1,8 +1,9 @@
-﻿namespace DependencyInjectionContainer;
-using System.Reflection;
+﻿using System.Reflection;
 using System.Runtime.ExceptionServices;
-using Enums;
-using Exceptions;
+using DependencyInjectionContainer.Enums;
+using DependencyInjectionContainer.Exceptions;
+
+namespace DependencyInjectionContainer;
 
 public sealed class DiContainer : IDisposable, IServiceProvider
 {
@@ -30,16 +31,16 @@ public sealed class DiContainer : IDisposable, IServiceProvider
 
     internal ServicesDisposer ServicesDisposer { get; }
 
-    public TTypeToResolve Resolve<TTypeToResolve>(ResolveStrategy resolveType = ResolveStrategy.Any) where TTypeToResolve : class
+    public TTypeToResolve Resolve<TTypeToResolve>(ResolveStrategy resolveStrategy = ResolveStrategy.Any) where TTypeToResolve : class
     {
-        return (TTypeToResolve)Resolve(typeof(TTypeToResolve), resolveType);
+        return (TTypeToResolve)Resolve(typeof(TTypeToResolve), resolveStrategy);
     }
 
-    public IEnumerable<TTypeToResolve> ResolveMany<TTypeToResolve>(ResolveStrategy resolveSource = ResolveStrategy.Any) where TTypeToResolve : class
+    public IEnumerable<TTypeToResolve> ResolveMany<TTypeToResolve>(ResolveStrategy resolveStrategy = ResolveStrategy.Any) where TTypeToResolve : class
     {
         ThrowIfDisposed();
 
-        switch (resolveSource)
+        switch (resolveStrategy)
         {
             case ResolveStrategy.Any:
                 IEnumerable<TTypeToResolve> resolvedLocal = ResolveLocal().ToList(); 
@@ -65,7 +66,7 @@ public sealed class DiContainer : IDisposable, IServiceProvider
         IEnumerable<TTypeToResolve> ResolveLocal() =>
             registeredServices
                 .Where(service => service.Key == typeof(TTypeToResolve))
-                .Select(service => (TTypeToResolve)service.GetOrCreateImplementation_SaveIfSingleton(this, ResolveStrategy.Local));
+                .Select(service => (TTypeToResolve)service.GetOrCreateImplementation(this, ResolveStrategy.Local));
 
         IEnumerable<TTypeToResolve> ResolveNonLocal()
             => parent?.ResolveMany<TTypeToResolve>() ?? Enumerable.Empty<TTypeToResolve>();
@@ -90,7 +91,7 @@ public sealed class DiContainer : IDisposable, IServiceProvider
         return Resolve(serviceType, ResolveStrategy.Any);
     }
 
-    internal object Resolve(Type typeToResolve, ResolveStrategy resolveSource)
+    internal object Resolve(Type typeToResolve, ResolveStrategy resolveStrategy)
     {
         ThrowIfDisposed();
 
@@ -102,10 +103,10 @@ public sealed class DiContainer : IDisposable, IServiceProvider
         if (typeToResolve.IsEnumerable())
         {
             typeToResolve = typeToResolve.GetGenericArguments()[0];
-            return InvokeGenericResolveMany(typeToResolve, this, resolveSource);
+            return InvokeGenericResolveMany(typeToResolve, this, resolveStrategy);
         }
 
-        switch (resolveSource)
+        switch (resolveStrategy)
         {
             case ResolveStrategy.NonLocal:
                 if (!IsParentContainerExist())
@@ -116,15 +117,15 @@ public sealed class DiContainer : IDisposable, IServiceProvider
 
             case ResolveStrategy.Any:
             case ResolveStrategy.Local:
-                if (TryGetRegistration(typeToResolve, resolveSource, out Service? foundService))
+                if (TryGetRegistration(typeToResolve, resolveStrategy, out Service? foundService))
                 {
-                    if (typeToResolve.IsGenericType && (foundService!.Value is not null && foundService.Value.IsGenericTypeDefinition))
+                    if (foundService!.Value is not null && foundService.Value.IsGenericTypeDefinition)
                     {
-                        var genericTypes = typeToResolve.GenericTypeArguments;
+                        var typeArguments = typeToResolve.GenericTypeArguments;
                         foundService = new Service(foundService.Key,
-                            foundService.Value!.MakeGenericType(genericTypes), foundService.Lifetime);
+                            foundService.Value!.MakeGenericType(typeArguments), foundService.Lifetime);
                     }
-                    return foundService!.GetOrCreateImplementation_SaveIfSingleton(this, resolveSource);
+                    return foundService!.GetOrCreateImplementation(this, resolveStrategy);
                 }
                 throw new ServiceNotFoundException(typeToResolve);
 
@@ -133,11 +134,11 @@ public sealed class DiContainer : IDisposable, IServiceProvider
         }
     }
 
-    internal bool TryGetRegistration(Type typeForSearch, ResolveStrategy resolveSource, out Service? foundService)
+    internal bool TryGetRegistration(Type typeForSearch, ResolveStrategy resolveStrategy, out Service? foundService)
     {
         List<Service> servicesImplementsType = new ();
 
-        switch (resolveSource)
+        switch (resolveStrategy)
         {
             case ResolveStrategy.Local:
                 servicesImplementsType = registeredServices
@@ -185,14 +186,14 @@ public sealed class DiContainer : IDisposable, IServiceProvider
         }
     }
 
-    private static object InvokeGenericResolveMany(Type typeToResolve, object invokeFrom, ResolveStrategy resolveSource)
+    private static object InvokeGenericResolveMany(Type typeToResolve, object invokeFrom, ResolveStrategy resolveStrategy)
     {
         try
         {
             return typeof(DiContainer)
                    .GetMethod(nameof(ResolveMany))
                    !.MakeGenericMethod(typeToResolve)
-                   .Invoke(invokeFrom, new object[] { resolveSource })!;
+                   .Invoke(invokeFrom, new object[] { resolveStrategy })!;
         }
         catch (TargetInvocationException ex)
         {

@@ -1,12 +1,10 @@
 ﻿namespace DependencyInjectionContainer;
-using System;
-using System.Collections.Generic;
 
-internal static class TypeExtensions
+public static class TypeExtensions
 {
-    public static bool IsEnumerable(this Type type) => type.IsGenericType && (type.GetGenericTypeDefinition() == typeof(IEnumerable<>));
+    public static bool IsEnumerable(this Type type) => type.IsGenericType && type.GetGenericTypeDefinition() == typeof(IEnumerable<>);
 
-    public static string GetGenericNameWithoutGenericType(this Type type)
+    public static string? GetGenericNameWithoutGenericType(this Type type)
     {
         if (type.IsGenericType)
         {
@@ -15,11 +13,16 @@ internal static class TypeExtensions
                 : type.Namespace + '.' + type.Name;
         }
 
-        return "";
+        return null;
     }
 
-    public static bool IsAssignableToGenericType(this Type type, Type typeToCheck)
+    public static bool IsAssignableToGenericTypeDefinition(this Type type, Type typeToCheck)
     {
+        if (!typeToCheck.IsGenericTypeDefinition)
+        {
+            throw new ArgumentException($"{typeToCheck.FullName} is not generic type definition");
+        }
+
         foreach (var t in type.GetInterfaces())
         {
             if (t.IsGenericType && t.GetGenericTypeDefinition() == typeToCheck)
@@ -33,6 +36,6 @@ internal static class TypeExtensions
             return true;
         }
 
-        return type.BaseType?.IsAssignableToGenericType(typeToCheck) ?? false;
+        return type.BaseType?.IsAssignableToGenericTypeDefinition(typeToCheck) ?? false;
     }
 }

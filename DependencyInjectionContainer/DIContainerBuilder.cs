@@ -1,10 +1,11 @@
-﻿using JetBrains.Annotations;
+﻿using System.Reflection;
+using JetBrains.Annotations;
+
+using DependencyInjectionContainer.Attributes;
+using DependencyInjectionContainer.Enums;
+using DependencyInjectionContainer.Exceptions;
 
 namespace DependencyInjectionContainer;
-using Attributes;
-using Enums;
-using Exceptions;
-using System.Reflection;
 
 public sealed class DiContainerBuilder
 {
@@ -24,27 +25,27 @@ public sealed class DiContainerBuilder
 
     internal DiContainerBuilder(DiContainer parent) => parentContainer = parent;
 
-    public void Register<TServiceType, TImplementation> (LifetimeOfService lifetime) where TImplementation : TServiceType 
+    public void Register<TServiceType, TImplementation> (ServiceLifetime lifetime) where TImplementation : TServiceType 
         => Register(typeof(TServiceType), typeof(TImplementation), lifetime);
 
     [AssertionMethod]
 
     public void Register<TServiceType, TImplementation>
-        (LifetimeOfService lifetime, Func<DiContainer, TServiceType> implementationFactory) where TImplementation : TServiceType
+        (ServiceLifetime lifetime, Func<DiContainer, TServiceType> implementationFactory) where TImplementation : TServiceType
         => Register(typeof(TServiceType), typeof(TImplementation), lifetime,
             container => implementationFactory(container)!);
 
-    public void Register<TImplementation> (LifetimeOfService lifetime) where TImplementation : class 
+    public void Register<TImplementation> (ServiceLifetime lifetime) where TImplementation : class 
         => Register( typeof(TImplementation), lifetime);
 
     public void Register<TServiceType>
-        (LifetimeOfService lifetime, Func<DiContainer, TServiceType> implementationFactory) where TServiceType : class
+        (ServiceLifetime lifetime, Func<DiContainer, TServiceType> implementationFactory) where TServiceType : class
        => Register(typeof(TServiceType), lifetime, implementationFactory);
 
-    public void RegisterWithImplementation<TServiceType>(object implementation, LifetimeOfService lifetime)
+    public void RegisterWithImplementation<TServiceType>(object implementation, ServiceLifetime lifetime)
        => RegisterWithImplementation(typeof(TServiceType), implementation, lifetime);
 
-    public void RegisterWithImplementation(object implementation, LifetimeOfService lifetime)
+    public void RegisterWithImplementation(object implementation, ServiceLifetime lifetime)
     {
         ThrowIfContainerBuilt().TreatTransientDisposable(lifetime, implementation.GetType());
         RegisterDependingFromActionOnSecondRegistration(new Service(implementation, lifetime));
@@ -81,7 +82,7 @@ public sealed class DiContainerBuilder
         return new DiContainer(services, parentContainer);
     }
 
-    private void RegisterWithImplementation(Type serviceType, object implementation, LifetimeOfService lifetime)
+    private void RegisterWithImplementation(Type serviceType, object implementation, ServiceLifetime lifetime)
     {
         ThrowIfImplTypeNotConvertibleToServiceType(serviceType, implementation.GetType());
         ThrowIfContainerBuilt()
@@ -89,7 +90,7 @@ public sealed class DiContainerBuilder
         RegisterDependingFromActionOnSecondRegistration(new Service(serviceType, implementation, lifetime));
     }
 
-    private void Register(Type interfaceType, Type implementationType, LifetimeOfService lifetime)
+    private void Register(Type interfaceType, Type implementationType, ServiceLifetime lifetime)
     {
         ThrowIfImplTypeNotConvertibleToServiceType(interfaceType, implementationType);
         ThrowIfContainerBuilt().TreatTransientDisposable(lifetime, implementationType)
@@ -97,7 +98,7 @@ public sealed class DiContainerBuilder
         RegisterDependingFromActionOnSecondRegistration(new Service(interfaceType, implementationType, lifetime));
     }
 
-    private void Register(Type implementationType, LifetimeOfService lifetime)
+    private void Register(Type implementationType, ServiceLifetime lifetime)
     {
         if (implementationType.IsAbstract)
         {
@@ -109,14 +110,14 @@ public sealed class DiContainerBuilder
     }
 
     //how to check that factory returns serviceType
-    private void Register(Type serviceType, LifetimeOfService lifetime, Func<DiContainer, object> implementationFactory)
+    private void Register(Type serviceType, ServiceLifetime lifetime, Func<DiContainer, object> implementationFactory)
     {
         ThrowIfContainerBuilt().TreatWithManyConstructors(serviceType, true);
         RegisterDependingFromActionOnSecondRegistration(new Service(serviceType, lifetime, implementationFactory));
     }
 
     //how to check that factory returns serviceType
-    private void Register(Type interfaceType, Type implementationType, LifetimeOfService lifetime,
+    private void Register(Type interfaceType, Type implementationType, ServiceLifetime lifetime,
         Func<DiContainer, object> implementationFactory)
     {
         ThrowIfImplTypeNotConvertibleToServiceType(interfaceType, implementationType);
@@ -164,10 +165,10 @@ public sealed class DiContainerBuilder
     }
 
     [AssertionMethod]
-    private DiContainerBuilder TreatTransientDisposable(LifetimeOfService lifetime, Type implementationType)
+    private DiContainerBuilder TreatTransientDisposable(ServiceLifetime lifetime, Type implementationType)
     {
         if((rules & Rules.DisposeTransientWhenDisposeContainer) == 0 && 
-           lifetime == LifetimeOfService.Transient && implementationType.GetInterface(nameof(IDisposable)) != null)
+           lifetime == ServiceLifetime.Transient && implementationType.GetInterface(nameof(IDisposable)) != null)
         {
             throw new RegistrationServiceException("It is prohibited to register transient disposable service");
         }
@@ -188,7 +189,7 @@ public sealed class DiContainerBuilder
     [AssertionMethod]
     private void ThrowIfImplTypeNotConvertibleToServiceType(Type serviceType, Type implementationType)
     {
-        if ((serviceType.IsGenericTypeDefinition && !implementationType.IsAssignableToGenericType(serviceType))
+        if ((serviceType.IsGenericTypeDefinition && !implementationType.IsAssignableToGenericTypeDefinition(serviceType))
             || !implementationType.IsAssignableTo(serviceType))
         {
             throw new ArgumentException(

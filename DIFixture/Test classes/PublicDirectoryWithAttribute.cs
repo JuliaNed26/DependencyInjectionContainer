@@ -3,5 +3,5 @@ using DependencyInjectionContainer.Enums;
 
 namespace DIFixture.Test_classes;
 
-[Register(LifetimeOfService.Transient, typeof(IUserDirectory))]
+[Register(ServiceLifetime.Transient, typeof(IUserDirectory))]
 internal sealed class PublicDirectoryWithAttribute : IUserDirectory {}

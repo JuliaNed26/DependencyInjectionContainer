@@ -1,18 +1,18 @@
-﻿namespace DependencyInjectionContainer.Attributes;
-using System;
-using Enums;
+﻿using DependencyInjectionContainer.Enums;
+
+namespace DependencyInjectionContainer.Attributes;
 
 [AttributeUsage(AttributeTargets.Class, Inherited = false)]
 public sealed class RegisterAttribute : Attribute
 {
-    public RegisterAttribute(LifetimeOfService lifetime, Type interfaceType)
+    public RegisterAttribute(ServiceLifetime lifetime, Type interfaceType)
     {
         InterfaceType = interfaceType;
         Lifetime = lifetime;
         IsRegisteredByInterface = true;
     }
 
-    public RegisterAttribute(LifetimeOfService lifetime)
+    public RegisterAttribute(ServiceLifetime lifetime)
     {
         Lifetime = lifetime;
         IsRegisteredByInterface = false;
@@ -20,5 +20,5 @@ public sealed class RegisterAttribute : Attribute
 
     public bool IsRegisteredByInterface { get; init; }
     public Type? InterfaceType { get;}
-    public LifetimeOfService Lifetime { get;}
+    public ServiceLifetime Lifetime { get;}
 }
