@@ -1,14 +1,20 @@
-﻿namespace DependencyInjectionContainer;
-using System.Reflection;
+﻿using System.Reflection;
 using System.Runtime.ExceptionServices;
-using Enums;
-using Exceptions;
+using DependencyInjectionContainer.Enums;
+using DependencyInjectionContainer.Exceptions;
 
-public sealed class DiContainer : IDisposable
+namespace DependencyInjectionContainer;
+
+public sealed class DiContainer : IDisposable, IServiceProvider
 {
     private bool isDisposed;
     private readonly IEnumerable<Service> registeredServices;
     private readonly DiContainer? parent;
+
+    public DiContainer()
+    {
+        ServicesDisposer = new ServicesDisposer();
+    }
 
     internal DiContainer(IEnumerable<Service> services, DiContainer? parent)
     {
@@ -25,16 +31,16 @@ public sealed class DiContainer : IDisposable
 
     internal ServicesDisposer ServicesDisposer { get; }
 
-    public TTypeToResolve Resolve<TTypeToResolve>(ResolveStrategy resolveType = ResolveStrategy.Any) where TTypeToResolve : class
+    public TTypeToResolve Resolve<TTypeToResolve>(ResolveStrategy resolveStrategy = ResolveStrategy.Any) where TTypeToResolve : class
     {
-        return (TTypeToResolve)Resolve(typeof(TTypeToResolve), resolveType);
+        return (TTypeToResolve)Resolve(typeof(TTypeToResolve), resolveStrategy);
     }
 
-    public IEnumerable<TTypeToResolve> ResolveMany<TTypeToResolve>(ResolveStrategy resolveSource = ResolveStrategy.Any) where TTypeToResolve : class
+    public IEnumerable<TTypeToResolve> ResolveMany<TTypeToResolve>(ResolveStrategy resolveStrategy = ResolveStrategy.Any) where TTypeToResolve : class
     {
         ThrowIfDisposed();
 
-        switch (resolveSource)
+        switch (resolveStrategy)
         {
             case ResolveStrategy.Any:
                 IEnumerable<TTypeToResolve> resolvedLocal = ResolveLocal().ToList(); 
@@ -60,7 +66,7 @@ public sealed class DiContainer : IDisposable
         IEnumerable<TTypeToResolve> ResolveLocal() =>
             registeredServices
                 .Where(service => service.Key == typeof(TTypeToResolve))
-                .Select(service => (TTypeToResolve)service.GetOrCreateImplementation_SaveIfSingleton(this, ResolveStrategy.Local));
+                .Select(service => (TTypeToResolve)service.GetOrCreateImplementation(this, ResolveStrategy.Local));
 
         IEnumerable<TTypeToResolve> ResolveNonLocal()
             => parent?.ResolveMany<TTypeToResolve>() ?? Enumerable.Empty<TTypeToResolve>();
@@ -69,14 +75,23 @@ public sealed class DiContainer : IDisposable
             ResolveNonLocal().Where(resolved => resolvedServices.All(item => item.GetType() != resolved.GetType()));
     }
 
+    public bool IsServiceRegistered(Type serviceType) => registeredServices
+        .Any(service => service.Key == serviceType || 
+                        (serviceType.IsGenericType && service.Key.IsGenericTypeDefinition && service.Key.GetGenericTypeDefinition() == serviceType.GetGenericTypeDefinition()));
+
     public void Dispose()
     {
         ThrowIfDisposed();
         isDisposed = true;
         ServicesDisposer.Dispose();
     }
-    
-    internal object Resolve(Type typeToResolve, ResolveStrategy resolveSource)
+
+    public object GetService(Type serviceType)
+    {
+        return Resolve(serviceType, ResolveStrategy.Any);
+    }
+
+    internal object Resolve(Type typeToResolve, ResolveStrategy resolveStrategy)
     {
         ThrowIfDisposed();
 
@@ -88,10 +103,10 @@ public sealed class DiContainer : IDisposable
         if (typeToResolve.IsEnumerable())
         {
             typeToResolve = typeToResolve.GetGenericArguments()[0];
-            return InvokeGenericResolveMany(typeToResolve, this, resolveSource);
+            return InvokeGenericResolveMany(typeToResolve, this, resolveStrategy);
         }
 
-        switch (resolveSource)
+        switch (resolveStrategy)
         {
             case ResolveStrategy.NonLocal:
                 if (!IsParentContainerExist())
@@ -101,16 +116,16 @@ public sealed class DiContainer : IDisposable
                 return parent!.Resolve(typeToResolve, ResolveStrategy.Any);
 
             case ResolveStrategy.Any:
-                if (TryGetRegistration(typeToResolve, ResolveStrategy.Any, out Service? foundService))
-                {
-                    return foundService!.GetOrCreateImplementation_SaveIfSingleton(this, resolveSource);
-                }
-                throw new ServiceNotFoundException(typeToResolve);
-
             case ResolveStrategy.Local:
-                if (TryGetRegistration(typeToResolve, ResolveStrategy.Local, out foundService))
+                if (TryGetRegistration(typeToResolve, resolveStrategy, out Service? foundService))
                 {
-                    return foundService!.GetOrCreateImplementation_SaveIfSingleton(this, resolveSource);
+                    if (foundService!.Value is not null && foundService.Value.IsGenericTypeDefinition)
+                    {
+                        var typeArguments = typeToResolve.GenericTypeArguments;
+                        foundService = new Service(foundService.Key,
+                            foundService.Value!.MakeGenericType(typeArguments), foundService.Lifetime);
+                    }
+                    return foundService!.GetOrCreateImplementation(this, resolveStrategy);
                 }
                 throw new ServiceNotFoundException(typeToResolve);
 
@@ -119,24 +134,17 @@ public sealed class DiContainer : IDisposable
         }
     }
 
-    private void ThrowIfDisposed()
-    { 
-        if (isDisposed)
-        {
-            throw new InvalidOperationException("This container was disposed");
-        }
-    }
-
-    private bool TryGetRegistration(Type typeForSearch, ResolveStrategy resolveSource, out Service? foundService)
+    internal bool TryGetRegistration(Type typeForSearch, ResolveStrategy resolveStrategy, out Service? foundService)
     {
-        List<Service> servicesImplementsType = new List<Service>();
+        List<Service> servicesImplementsType = new ();
 
-        switch (resolveSource)
+        switch (resolveStrategy)
         {
             case ResolveStrategy.Local:
                 servicesImplementsType = registeredServices
-                                         .Where(service => service.Key == typeForSearch)
-                                         .ToList();
+                    .Where(service => service.Key == typeForSearch || service.Key.FullName == typeForSearch.GetGenericNameWithoutGenericType())
+                    .ToList();
+
                 break;
             case ResolveStrategy.Any:
                 servicesImplementsType = TakeFirstRegistered();
@@ -146,10 +154,10 @@ public sealed class DiContainer : IDisposable
             default:
                 throw new ArgumentException("Wrong resolve source type");
         }
-
+        //check rule
         if (servicesImplementsType.Count > 1)
         {
-            throw new ResolveServiceException($"Many services with type {typeForSearch} was registered. Use ResolveMany to resolve them all");
+            throw new ResolveServiceException($"Many services with type {typeForSearch} was registered.");
         }
         
         foundService = servicesImplementsType.SingleOrDefault();
@@ -162,7 +170,7 @@ public sealed class DiContainer : IDisposable
             while (curContainer != null && found.Count == 0)
             {
                 found = curContainer.registeredServices
-                    .Where(service => service.Key == typeForSearch)
+                    .Where(service => service.Key == typeForSearch || service.Key.FullName == typeForSearch.GetGenericNameWithoutGenericType())
                     .ToList();
                 curContainer = curContainer.parent;
             }
@@ -170,14 +178,22 @@ public sealed class DiContainer : IDisposable
         }
     }
 
-    private static object InvokeGenericResolveMany(Type typeToResolve, object invokeFrom, ResolveStrategy resolveSource)
+    private void ThrowIfDisposed()
+    {
+        if (isDisposed)
+        {
+            throw new InvalidOperationException("This container was disposed");
+        }
+    }
+
+    private static object InvokeGenericResolveMany(Type typeToResolve, object invokeFrom, ResolveStrategy resolveStrategy)
     {
         try
         {
             return typeof(DiContainer)
                    .GetMethod(nameof(ResolveMany))
                    !.MakeGenericMethod(typeToResolve)
-                   .Invoke(invokeFrom, new object[] { resolveSource })!;
+                   .Invoke(invokeFrom, new object[] { resolveStrategy })!;
         }
         catch (TargetInvocationException ex)
         {

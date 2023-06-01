@@ -1,7 +1,4 @@
 ﻿namespace DependencyInjectionContainer;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 
 internal sealed class ServicesDisposer : IDisposable
 {
@@ -15,9 +12,14 @@ internal sealed class ServicesDisposer : IDisposable
             {
                 disposable.Dispose();
             }
+            if (instances.ElementAt(i) is IAsyncDisposable asyncDisposable)
+            { 
+                asyncDisposable.DisposeAsync().ConfigureAwait(true);
+            }
         }
         instances.Clear();
     }
 
     public void Add(IDisposable instance) => instances.Add(instance);
+    public void Add(IAsyncDisposable instance) => instances.Add(instance);
 }

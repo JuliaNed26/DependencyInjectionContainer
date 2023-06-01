@@ -1,6 +1,6 @@
-﻿namespace DependencyInjectionContainer.Attributes;
-using System;
-using Enums;
+﻿using DependencyInjectionContainer.Enums;
+
+namespace DependencyInjectionContainer.Attributes;
 
 [AttributeUsage(AttributeTargets.Class, Inherited = false)]
 public sealed class RegisterAttribute : Attribute
